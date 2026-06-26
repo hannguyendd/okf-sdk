@@ -223,3 +223,119 @@ These rules track OKF v0.1. Rule IDs are stable: a rule is never renumbered.
 Future OKF versions add, deprecate, or re-level rules by appending to the tables
 and noting the change here. A minor OKF bump may add `SHOULD` / `MAY` rules or
 relax a `MUST`; a major bump may add or tighten `MUST` / `MUST NOT` rules.
+
+## Appendix C — Example of a conformant bundle
+
+A complete bundle that satisfies every MUST / MUST NOT rule. It exercises all
+three file roles, the only permitted `index.md` frontmatter (`okf_version`),
+cross-links in the recommended absolute form, and a citation block.
+
+```
+acme-knowledge/
+├── index.md                 # root index — declares okf_version (IDX-01 exception, VER-01)
+├── log.md                   # update history (LOG-*)
+└── tables/
+    ├── index.md             # subdirectory index — no frontmatter (IDX-01)
+    ├── orders.md            # concept (DOC-*, FM-*)
+    └── customers.md         # concept (DOC-*, FM-*)
+```
+
+`index.md` (bundle root):
+
+```markdown
+---
+okf_version: "0.1"
+---
+
+# Subdirectories
+
+* [tables/](tables/) - Warehouse tables for the sales domain.
+```
+
+`log.md`:
+
+```markdown
+# Update Log
+
+## 2026-05-28
+* **Creation**: Added [orders](/tables/orders.md) and [customers](/tables/customers.md).
+
+## 2026-05-15
+* **Initialization**: Created the bundle structure and root [index](/index.md).
+```
+
+`tables/index.md`:
+
+```markdown
+# Tables
+
+* [Orders](orders.md) - One row per completed customer order.
+* [Customers](customers.md) - One row per customer.
+```
+
+`tables/orders.md`:
+
+```markdown
+---
+type: BigQuery Table
+title: Orders
+description: One row per completed customer order.
+resource: https://console.cloud.google.com/bigquery?p=acme&d=sales&t=orders
+tags: [sales, orders]
+timestamp: 2026-05-28T00:00:00Z
+---
+
+# Schema
+
+| Column        | Type    | Description                              |
+|---------------|---------|------------------------------------------|
+| `order_id`    | STRING  | Unique order identifier.                 |
+| `customer_id` | STRING  | FK to [customers](/tables/customers.md). |
+| `total_usd`   | NUMERIC | Order total in USD.                      |
+
+Part of the sales domain. See [customers](/tables/customers.md).
+
+# Citations
+
+[1] [BigQuery table schema](https://console.cloud.google.com/bigquery?p=acme&d=sales&t=orders)
+```
+
+`tables/customers.md`:
+
+```markdown
+---
+type: BigQuery Table
+title: Customers
+description: One row per customer.
+resource: https://console.cloud.google.com/bigquery?p=acme&d=sales&t=customers
+tags: [sales, customers]
+timestamp: 2026-05-28T00:00:00Z
+---
+
+# Schema
+
+| Column        | Type   | Description                 |
+|---------------|--------|-----------------------------|
+| `customer_id` | STRING | Unique customer identifier. |
+| `email`       | STRING | Primary contact email.      |
+
+Referenced by [orders](/tables/orders.md).
+```
+
+### Why it conforms
+
+| Rule | Satisfied because |
+|------|-------------------|
+| `DOC-01` | Every document is plain UTF-8 text. |
+| `DOC-02` | Each concept opens with a `---` / `---` frontmatter block. |
+| `DOC-03` | Each frontmatter block is a YAML mapping. |
+| `FM-01` | Both concepts carry a non-empty `type` (`BigQuery Table`). |
+| `RSV-01` | `index.md` and `log.md` hold listings/history — never concept content. |
+| `RSV-02` | Every `.md` is exactly one of: `index.md`, `log.md`, or a concept. |
+| `IDX-01` | Only the root `index.md` has frontmatter, and only `okf_version`; `tables/index.md` has none. |
+| `IDX-02` | Both index files are `#` headings followed by markdown-link list items. |
+| `LOG-01` | `log.md` date headings are ISO `YYYY-MM-DD`. |
+
+It also follows the guidance: full recommended frontmatter (`FM-02`–`FM-04`),
+absolute cross-links (`LNK-01`), index entries carrying descriptions (`IDX-03`),
+newest-first log order (`LOG-02`), and a numbered `# Citations` block (`CIT-01`).
