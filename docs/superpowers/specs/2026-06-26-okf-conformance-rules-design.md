@@ -65,13 +65,17 @@ concretely checkable parts become MUST; the soft parts become SHOULD.
 ## Document layout (CONFORMANCE.md)
 
 1. Title + one-paragraph purpose + grounding principle.
-2. **Conformance levels** (the MUST/SHOULD/MAY semantics above).
-3. **Conformant bundle — summary**: a bundle is conformant iff it violates no
+2. **Bundle structure, files, and fields** — orientation summary of SPEC §2–§4
+   so the doc reads standalone: the directory-tree shape, a file-roles table
+   (concept / `index.md` / `log.md`), and a frontmatter-fields table (status +
+   purpose + governing rule). Decides nothing — points at the rules in §4.
+3. **Conformance levels** (the MUST/SHOULD/MAY semantics above).
+4. **Conformant bundle — summary**: a bundle is conformant iff it violates no
    MUST/MUST NOT rule (i.e. `DOC-01..03`, `FM-01`, `RSV-01/02`, `IDX-01/02`,
    `LOG-01`).
-4. Rule tables by category (see inventory below).
-5. **Explicitly permitted — NOT violations** (from §9).
-6. Short appendix: rule-ID index / changelog stub for future OKF versions.
+5. Rule tables by category (see inventory below).
+6. **Explicitly permitted — NOT violations** (from §9).
+7. Short appendix: rule-ID index / changelog stub for future OKF versions.
 
 ## Complete rule inventory
 
