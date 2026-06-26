@@ -30,4 +30,6 @@ print(bundle.backlinks("tables/users"))
 regenerate_indexes("path/to/bundle")  # writes index.md files
 ```
 
-See [SPEC.md](SPEC.md) for the format this library implements.
+See [SPEC.md](SPEC.md) for the format this library implements, and
+[CONFORMANCE.md](CONFORMANCE.md) for the numbered, checkable rules a bundle must
+satisfy to be conformant.
