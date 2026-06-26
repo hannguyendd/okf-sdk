@@ -339,3 +339,90 @@ Referenced by [orders](/tables/orders.md).
 It also follows the guidance: full recommended frontmatter (`FM-02`–`FM-04`),
 absolute cross-links (`LNK-01`), index entries carrying descriptions (`IDX-03`),
 newest-first log order (`LOG-02`), and a numbered `# Citations` block (`CIT-01`).
+
+## Appendix D — Example of a non-conformant bundle
+
+The same shape, riddled with the most common authoring mistakes. **Each
+violation below is on its own enough to make the whole bundle non-conformant** —
+a conformant bundle must clear *all* nine MUST / MUST NOT rules.
+
+```
+broken-bundle/
+├── log.md                # LOG-01 — non-ISO date heading
+├── metrics.md            # DOC-02 — no frontmatter block at all
+└── tables/
+    ├── index.md          # IDX-01 — a non-root index.md carrying frontmatter
+    ├── orders.md         # FM-01 — frontmatter has no `type`
+    └── customers.md      # DOC-03 — frontmatter is a list, not a mapping
+```
+
+`metrics.md` — no frontmatter block (`DOC-02`):
+
+```markdown
+# Monthly Active Users
+
+The MAU metric counts distinct users in a trailing 30-day window.
+```
+
+`tables/orders.md` — frontmatter is missing `type` (`FM-01`):
+
+```markdown
+---
+title: Orders
+description: One row per completed customer order.
+---
+
+# Schema
+...
+```
+
+`tables/customers.md` — frontmatter is a YAML sequence, not a mapping (`DOC-03`):
+
+```markdown
+---
+- BigQuery Table
+- Customers
+---
+
+One row per customer.
+```
+
+`tables/index.md` — a non-root `index.md` carrying frontmatter (`IDX-01`):
+
+```markdown
+---
+type: Index
+title: Tables
+---
+
+# Tables
+
+* [Orders](orders.md) - Customer orders.
+```
+
+`log.md` — date heading is not ISO `YYYY-MM-DD` (`LOG-01`):
+
+```markdown
+# Update Log
+
+## May 28, 2026
+* **Creation**: Added the orders table.
+```
+
+### What's wrong, and the fix
+
+| File | Rule | Problem | Fix |
+|------|------|---------|-----|
+| `metrics.md` | `DOC-02` | Body starts immediately — no `---` frontmatter block. | Add a frontmatter block containing at least `type`. |
+| `tables/orders.md` | `FM-01` | Frontmatter has no `type` key. | Add `type: <kind>` — any non-empty string. |
+| `tables/customers.md` | `DOC-03` | Frontmatter parses as a YAML list, not a mapping. | Use `key: value` pairs, including `type:`. |
+| `tables/index.md` | `IDX-01` | A non-root `index.md` carries frontmatter. | Remove the frontmatter — only the root `index.md` may have it, and only `okf_version`. |
+| `log.md` | `LOG-01` | Date heading `## May 28, 2026` is not ISO form. | Use `## 2026-05-28`. |
+
+### What would *not* make this bundle non-conformant
+
+Don't confuse these mistakes with the permitted latitude in §5. None of the
+following are violations: a broken cross-link, an unfamiliar `type` value (e.g.
+`type: Wibble`), a concept missing `title`/`description`/`tags`/`timestamp`, an
+extra unknown frontmatter key, or a directory with no `index.md` at all. Fixing
+the five real violations above — and only those — makes the bundle conformant.
