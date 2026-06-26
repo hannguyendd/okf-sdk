@@ -186,7 +186,34 @@ Categories: `DOC` document structure · `FM` frontmatter · `RSV` reserved files
 
 ---
 
-## 5. Explicitly permitted — NOT conformance violations
+## 5. Conformance checklist
+
+A condensed, runnable form of the nine conformance-blocking rules. Walk a bundle
+against it: if every box holds, the bundle is **conformant** with OKF v0.1; a
+single failing box makes it **non-conformant**. Full statements, verification, and
+SPEC references are in §4.
+
+**For every concept document** (every `.md` that is not `index.md` / `log.md`):
+
+- [ ] **`DOC-01`** — the file decodes as UTF-8.
+- [ ] **`DOC-02`** — it opens with a frontmatter block: a line that is exactly `---`, then a closing line that is exactly `---`.
+- [ ] **`DOC-03`** — that block parses as a YAML **mapping** (key/value) — not a scalar or list.
+- [ ] **`FM-01`** — the frontmatter has a `type` key whose value is a non-empty string.
+
+**For the bundle as a whole:**
+
+- [ ] **`RSV-01`** — no `index.md` or `log.md` is used as a concept.
+- [ ] **`RSV-02`** — every `.md` file is a concept, an `index.md`, or a `log.md`.
+- [ ] **`IDX-01`** — no `index.md` carries frontmatter, except the bundle-root `index.md`, which may declare only `okf_version`.
+- [ ] **`IDX-02`** — every `index.md` present is `#` headings whose entries are markdown-link list items.
+- [ ] **`LOG-01`** — every `log.md` present uses ISO `YYYY-MM-DD` date-group headings.
+
+Everything not on this list (the `SHOULD` / `MAY` rules and §6) cannot make a
+bundle non-conformant.
+
+---
+
+## 6. Explicitly permitted — NOT conformance violations
 
 The permissive consumption model of SPEC §9 is part of the format. The following
 do **not** make a bundle non-conformant, and an implementation **must not** reject
@@ -421,7 +448,7 @@ title: Tables
 
 ### What would *not* make this bundle non-conformant
 
-Don't confuse these mistakes with the permitted latitude in §5. None of the
+Don't confuse these mistakes with the permitted latitude in §6. None of the
 following are violations: a broken cross-link, an unfamiliar `type` value (e.g.
 `type: Wibble`), a concept missing `title`/`description`/`tags`/`timestamp`, an
 extra unknown frontmatter key, or a directory with no `index.md` at all. Fixing
