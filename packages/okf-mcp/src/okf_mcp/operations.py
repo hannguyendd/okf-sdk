@@ -173,9 +173,6 @@ def list_concepts(
     bundle = Bundle.load(bundle_root)
     out: list[dict] = []
     for c in bundle.concepts:
-        # Bundle.load only excludes index.md; exclude reserved log.md too.
-        if c.id.rsplit("/", 1)[-1] in _RESERVED:
-            continue
         if type is not None and c.type != type:
             continue
         if prefix is not None and not c.id.startswith(prefix):
