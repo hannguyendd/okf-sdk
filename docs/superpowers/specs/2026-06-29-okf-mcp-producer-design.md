@@ -70,6 +70,12 @@ Every operation needs a bundle root, resolved in this order:
 1. The `bundle_root` argument, if provided to the tool.
 2. Otherwise the `OKF_BUNDLE_ROOT` environment variable.
 
+Environment loading uses **`pydantic-settings`**: a `Settings`
+(`BaseSettings`) model in `server.py` declares `okf_bundle_root: Path | None`
+bound to the `OKF_BUNDLE_ROOT` env var (e.g. `model_config =
+SettingsConfigDict(env_prefix="OKF_")`). The server reads it once at startup;
+the resolver falls back to it when a tool call omits `bundle_root`.
+
 If neither yields a value, or the resolved path is not an existing directory,
 raise `ValueError` with a clear message. The path is resolved with
 `Path(...).resolve()` before use.
@@ -272,12 +278,13 @@ assert tool registration only). Run with the workspace `uv run pytest`.
 ## 9. Packaging & housekeeping
 
 - `packages/okf-mcp/pyproject.toml`: `[project]` name `okf-mcp`, `requires-python
-  >=3.12`, deps `["mcp", "okf-core"]` (the `mcp` version is pinned by the
-  lockfile at `uv add` time); `okf-core` wired as a
+  >=3.12`, deps `["mcp", "pydantic-settings", "okf-core"]` (the `mcp` and
+  `pydantic-settings` versions are pinned by the lockfile at `uv add` time);
+  `okf-core` wired as a
   `[tool.uv.sources]` workspace dependency; console script
   `okf-mcp = "okf_mcp.server:main"`; hatchling build targeting `src/okf_mcp`.
-- Add `mcp` via `uv add --package okf-mcp mcp` and `okf-core` as a workspace
-  source so the lockfile/`.venv` update.
+- Add deps via `uv add --package okf-mcp mcp pydantic-settings` and `okf-core`
+  as a workspace source so the lockfile/`.venv` update.
 - Update the root `CLAUDE.md` "Project status" to mention the second member and
   this spec. Add `packages/okf-mcp/README.md` documenting configuration
   (`OKF_BUNDLE_ROOT`) and the four tools.
