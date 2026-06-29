@@ -6,7 +6,10 @@ bundles. Built on the official `mcp` SDK (FastMCP); depends on `okf-core`.
 ## Configuration
 
 Set the bundle root via the `OKF_BUNDLE_ROOT` environment variable, or pass
-`bundle_root` to any tool to override per call. Example MCP client config:
+`bundle_root` to any tool to override per call. For local use, copy
+`.env.example` to `.env` (gitignored) and set `OKF_BUNDLE_ROOT` there — real
+environment variables take precedence over the `.env` file. Example MCP client
+config:
 
 ```json
 {

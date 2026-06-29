@@ -11,7 +11,9 @@ from okf_mcp import operations
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="OKF_")
+    model_config = SettingsConfigDict(
+        env_prefix="OKF_", env_file=".env", extra="ignore"
+    )
 
     bundle_root: Path | None = None
 
