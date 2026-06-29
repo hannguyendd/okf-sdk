@@ -8,11 +8,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 of Open Knowledge Format tooling. The root `pyproject.toml` is a **virtual**
 workspace root (no `[project]` of its own); packages live under `packages/*`.
 
-The first and currently only member is **`packages/okf-core`** — a library for
-reading and indexing OKF bundles (`OKFDocument`, `Bundle`, `regenerate_indexes`).
-Its only runtime dependency is PyYAML. See
-`docs/superpowers/specs/2026-06-25-okf-core-indexing-library-design.md` for the
-design.
+The workspace has two members. **`packages/okf-core`** — a library for
+reading, indexing, and validating OKF bundles (`OKFDocument`, `Bundle`,
+`regenerate_indexes`, `validate_bundle`). Its only runtime dependency is PyYAML.
+See `docs/superpowers/specs/2026-06-25-okf-core-indexing-library-design.md` for
+the indexing-library design and
+`docs/superpowers/specs/2026-06-26-okf-conformance-rules-design.md` plus
+`packages/okf-core/CONFORMANCE.md` for the conformance rules the validator
+checks.
+
+**`packages/okf-mcp`** — a producer MCP server (official `mcp` SDK / FastMCP,
+plus `pydantic-settings`) for authoring bundles: tools to `add`, `patch`,
+`get`, and `list` concepts and `read_index` (progressive disclosure),
+re-indexing and appending a directory-scoped `log.md` entry after each write.
+The bundle root comes from `OKF_BUNDLE_ROOT` (overridable per call). See
+`docs/superpowers/specs/2026-06-29-okf-mcp-producer-design.md` and
+`docs/superpowers/plans/2026-06-29-okf-mcp-producer.md`.
 
 ## Tooling
 
