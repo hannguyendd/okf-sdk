@@ -83,7 +83,7 @@ printf '%s\n' \
 ```
 
 Expect an `initialize` result naming `okf-producer`, then a `tools/list` with
-`add, patch, get, list, read_index`. Or explore interactively with the
+`add, patch, get, list, read_index, move`. Or explore interactively with the
 [MCP Inspector](https://github.com/modelcontextprotocol/inspector):
 
 ```bash
@@ -102,9 +102,11 @@ traffic — tools return values rather than printing.
 - `get(concept_id, bundle_root?)` — read one concept (frontmatter, body, outgoing links).
 - `list(type?, prefix?, bundle_root?)` — enumerate concepts, optionally filtered.
 - `read_index(dir?, depth=1, bundle_root?)` — read `index.md` files for progressive disclosure (depth 1-3).
+- `move(from_concept_id, to_concept_id, bundle_root?)` — relocate/rename a concept; rewrites inbound and own links, regenerates indexes, logs a Move entry (fails if source missing, destination exists, or ids equal).
 
-Every `add`/`patch` regenerates indexes and appends a dated entry to the changed
-concept's directory `log.md`. `timestamp` frontmatter is managed automatically.
+Every write tool (`add`/`patch`/`move`) regenerates indexes and appends a dated
+entry to the relevant directory `log.md`. `add`/`patch` manage the `timestamp`
+frontmatter automatically; `move` preserves it.
 
 ## Development
 
