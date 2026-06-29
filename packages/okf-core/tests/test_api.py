@@ -16,6 +16,8 @@ def test_public_api_is_importable_from_top_level():
         "parse_concept_id",
         "regenerate_indexes",
         "fallback_synthesizer",
+        "Violation",
+        "validate_bundle",
     }
     assert expected <= set(okf_core.__all__)
     for name in expected:

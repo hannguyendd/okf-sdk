@@ -31,5 +31,18 @@ __all__ = [
     "path_to_concept_id",
     "regenerate_indexes",
     "fallback_synthesizer",
+    "Violation",
+    "validate_bundle",
     "__version__",
 ]
+
+
+def __getattr__(name: str):
+    # Expose the validate API lazily so that `python -m okf_core.validate` does
+    # not import the module both as a package attribute and as __main__ (which
+    # triggers a runpy RuntimeWarning).
+    if name in ("Violation", "validate_bundle"):
+        from okf_core import validate
+
+        return getattr(validate, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
