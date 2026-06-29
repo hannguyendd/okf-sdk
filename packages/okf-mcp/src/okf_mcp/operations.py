@@ -5,6 +5,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from okf_core import (
+    Bundle,
     OKFDocument,
     concept_id_to_path,
     extract_links,
@@ -163,3 +164,29 @@ def get_concept(bundle_root: Path, concept_id: str) -> dict:
         "body": doc.body,
         "links_to": links,
     }
+
+
+def list_concepts(
+    bundle_root: Path, type: str | None = None, prefix: str | None = None
+) -> list[dict]:
+    """List concepts, optionally filtered by exact ``type`` and/or id ``prefix``."""
+    bundle = Bundle.load(bundle_root)
+    out: list[dict] = []
+    for c in bundle.concepts:
+        # Bundle.load only excludes index.md; exclude reserved log.md too.
+        if c.id.rsplit("/", 1)[-1] in _RESERVED:
+            continue
+        if type is not None and c.type != type:
+            continue
+        if prefix is not None and not c.id.startswith(prefix):
+            continue
+        out.append(
+            {
+                "id": c.id,
+                "type": c.type,
+                "title": c.title,
+                "description": c.description,
+                "tags": c.tags,
+            }
+        )
+    return out

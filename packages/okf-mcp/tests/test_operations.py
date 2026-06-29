@@ -181,3 +181,24 @@ def test_get_returns_doc(tmp_path):
 def test_get_missing_errors(tmp_path):
     with pytest.raises(ValueError):
         operations.get_concept(tmp_path, "nope")
+
+
+def test_list_all(tmp_path):
+    operations.add_concept(tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, "")
+    operations.add_concept(tmp_path, "metrics/mau", {"type": "Metric", "title": "MAU"}, "")
+    ids = {c["id"] for c in operations.list_concepts(tmp_path)}
+    assert ids == {"tables/orders", "metrics/mau"}
+
+
+def test_list_filters_by_type(tmp_path):
+    operations.add_concept(tmp_path, "tables/orders", {"type": "Table"}, "")
+    operations.add_concept(tmp_path, "metrics/mau", {"type": "Metric"}, "")
+    res = operations.list_concepts(tmp_path, type="Metric")
+    assert [c["id"] for c in res] == ["metrics/mau"]
+
+
+def test_list_filters_by_prefix(tmp_path):
+    operations.add_concept(tmp_path, "tables/orders", {"type": "Table"}, "")
+    operations.add_concept(tmp_path, "metrics/mau", {"type": "Metric"}, "")
+    res = operations.list_concepts(tmp_path, prefix="tables/")
+    assert [c["id"] for c in res] == ["tables/orders"]
