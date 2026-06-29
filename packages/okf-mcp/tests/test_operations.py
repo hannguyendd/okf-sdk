@@ -355,3 +355,49 @@ def test_move_rejects_reserved_dest(tmp_path):
     operations.add_concept(tmp_path, "a", {"type": "X"}, "")
     with pytest.raises(ValueError):
         operations.move_concept(tmp_path, "a", "tables/index")
+
+
+def test_move_rewrites_inbound_relative_link(tmp_path):
+    operations.add_concept(tmp_path, "tables/orders", {"type": "Table"}, "")
+    operations.add_concept(
+        tmp_path, "tables/customers", {"type": "Table"}, "see [o](orders.md)"
+    )
+    res = operations.move_concept(tmp_path, "tables/orders", "models/orders")
+    cust = OKFDocument.parse((tmp_path / "tables" / "customers.md").read_text())
+    assert "(../models/orders.md)" in cust.body
+    assert "tables/customers" in res["relinked"]
+
+
+def test_move_rewrites_inbound_absolute_link(tmp_path):
+    operations.add_concept(tmp_path, "tables/orders", {"type": "Table"}, "")
+    operations.add_concept(
+        tmp_path, "metrics/rev", {"type": "Metric"}, "[o](/tables/orders.md)"
+    )
+    operations.move_concept(tmp_path, "tables/orders", "models/orders")
+    rev = OKFDocument.parse((tmp_path / "metrics" / "rev.md").read_text())
+    assert "(/models/orders.md)" in rev.body
+
+
+def test_move_leaves_unrelated_concepts_untouched(tmp_path):
+    operations.add_concept(tmp_path, "tables/orders", {"type": "Table"}, "")
+    operations.add_concept(tmp_path, "tables/suppliers", {"type": "Table"}, "")
+    operations.add_concept(
+        tmp_path, "tables/customers", {"type": "Table"}, "[s](./suppliers.md)"
+    )
+    res = operations.move_concept(tmp_path, "tables/orders", "models/orders")
+    cust = OKFDocument.parse((tmp_path / "tables" / "customers.md").read_text())
+    assert "(./suppliers.md)" in cust.body  # unchanged, ./ style preserved
+    assert "tables/customers" not in res["relinked"]
+
+
+def test_move_inbound_preserves_frontmatter(tmp_path):
+    operations.add_concept(tmp_path, "tables/orders", {"type": "Table"}, "")
+    operations.add_concept(
+        tmp_path,
+        "tables/customers",
+        {"type": "Table", "timestamp": "2020-01-01T00:00:00Z"},
+        "[o](orders.md)",
+    )
+    operations.move_concept(tmp_path, "tables/orders", "models/orders")
+    cust = OKFDocument.parse((tmp_path / "tables" / "customers.md").read_text())
+    assert cust.frontmatter["timestamp"] == "2020-01-01T00:00:00Z"

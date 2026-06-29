@@ -261,6 +261,32 @@ def _log_move(
     return logs
 
 
+def _rewrite_inbound_links(
+    bundle_root: Path, moved_id: str, id_map: dict[str, str]
+) -> list[str]:
+    """Rewrite links to the moved concept in every other concept document.
+
+    Returns the ids of concepts whose body changed (sorted). The moved concept
+    itself (now at ``moved_id``) is skipped -- its body was rewritten on write.
+    """
+    bundle = Bundle.load(bundle_root)
+    relinked: list[str] = []
+    for c in bundle.concepts:
+        if c.id == moved_id:
+            continue
+        path = concept_id_to_path(bundle_root, parse_concept_id(c.id))
+        new_body = rewrite_links(c.body, path.parent, path.parent, bundle_root, id_map)
+        if new_body != c.body:
+            path.write_text(
+                OKFDocument(
+                    frontmatter=c.document.frontmatter, body=new_body
+                ).serialize(),
+                encoding="utf-8",
+            )
+            relinked.append(c.id)
+    return sorted(relinked)
+
+
 def move_concept(
     bundle_root: Path, from_concept_id: str, to_concept_id: str
 ) -> dict:
@@ -296,7 +322,7 @@ def move_concept(
     )
     from_path.unlink()
 
-    relinked: list[str] = []  # inbound rewriting added in a later task
+    relinked = _rewrite_inbound_links(bundle_root, to_id, id_map)
 
     logs = _log_move(from_path, to_path, doc.frontmatter, from_id, to_id)
     indexes = regenerate_indexes(bundle_root)
