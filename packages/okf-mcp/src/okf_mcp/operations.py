@@ -7,6 +7,7 @@ from pathlib import Path
 from okf_core import (
     OKFDocument,
     concept_id_to_path,
+    extract_links,
     parse_concept_id,
     regenerate_indexes,
 )
@@ -147,3 +148,18 @@ def patch_concept(
     log_path = _append_log_for(path, label, "Update", "Updated")
     indexes = regenerate_indexes(bundle_root)
     return _summary(bundle_root, concept_id, path, "updated", log_path, indexes)
+
+
+def get_concept(bundle_root: Path, concept_id: str) -> dict:
+    """Read one concept: frontmatter, body, and resolved outgoing links."""
+    path = _concept_path(bundle_root, concept_id)
+    if not path.exists():
+        raise ValueError(f"concept not found: {concept_id}")
+    doc = OKFDocument.parse(path.read_text(encoding="utf-8"))
+    links = extract_links(doc.body or "", path.parent, bundle_root)
+    return {
+        "id": concept_id,
+        "frontmatter": doc.frontmatter,
+        "body": doc.body,
+        "links_to": links,
+    }

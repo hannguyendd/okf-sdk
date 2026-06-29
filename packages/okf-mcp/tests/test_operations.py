@@ -165,3 +165,19 @@ def test_patch_logs_update(tmp_path):
     operations.add_concept(tmp_path, "a", {"type": "X", "title": "A"}, "")
     operations.patch_concept(tmp_path, "a", {"title": "A2"})
     assert "Updated [A2](a.md)" in (tmp_path / "log.md").read_text()
+
+
+def test_get_returns_doc(tmp_path):
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, "see [c](customers.md)"
+    )
+    operations.add_concept(tmp_path, "tables/customers", {"type": "Table"}, "")
+    res = operations.get_concept(tmp_path, "tables/orders")
+    assert res["id"] == "tables/orders"
+    assert res["frontmatter"]["type"] == "Table"
+    assert "tables/customers" in res["links_to"]
+
+
+def test_get_missing_errors(tmp_path):
+    with pytest.raises(ValueError):
+        operations.get_concept(tmp_path, "nope")
