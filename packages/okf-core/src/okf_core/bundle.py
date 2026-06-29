@@ -17,6 +17,16 @@ def extract_links(body: str, doc_dir: Path, bundle_root: Path) -> list[str]:
     beginning with ``/`` resolve against ``bundle_root`` (the OKF-recommended
     form). External ``scheme://`` links are skipped. Results are normalized to
     concept ids (``.md`` removed) and deduped, preserving first-seen order.
+
+    Examples (``doc_dir=root/topics``, ``bundle_root=root``)::
+
+        "[intro](./basics.md)"           -> ["topics/basics"]
+        "[home](/index-page.md)"         -> ["index-page"]      # absolute
+        "[sec](other.md#part-2)"         -> ["topics/other"]    # anchor stripped
+        "[site](https://x.com/page.md)"  -> []                  # external skipped
+        "[up](../outside.md)"            -> []                  # escapes root
+        "[a](a.md) [b](b.md) [a](a.md)"  -> ["topics/a",        # deduped, ordered
+                                            "topics/b"]
     """
     out: list[str] = []
     seen: set[str] = set()

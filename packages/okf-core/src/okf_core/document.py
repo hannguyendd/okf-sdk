@@ -21,6 +21,20 @@ class OKFDocument:
 
     @classmethod
     def parse(cls, text: str) -> "OKFDocument":
+        """Parse OKF markdown text into frontmatter and body.
+
+        A leading ``---`` line begins a YAML frontmatter block, terminated by
+        the next ``---`` line; the rest is the body (one leading blank line is
+        stripped). Without an opening delimiter, the whole text is the body and
+        frontmatter is empty. Raises ``OKFDocumentError`` on an unterminated
+        block, invalid YAML, or non-mapping frontmatter.
+
+        Examples::
+
+            "---\\ntype: Concept\\n---\\n\\nHello"  -> fm={"type": "Concept"}, body="Hello"
+            "no frontmatter"                       -> fm={}, body="no frontmatter"
+            "---\\ntype: x"                         -> OKFDocumentError (unterminated)
+        """
         lines = text.splitlines()
         if not lines or lines[0].strip() != _FRONTMATTER_DELIM:
             return cls(frontmatter={}, body=text)
@@ -41,7 +55,7 @@ class OKFDocument:
         if not isinstance(fm, dict):
             raise OKFDocumentError("Frontmatter must be a YAML mapping")
 
-        body = "\n".join(lines[end_idx + 1:])
+        body = "\n".join(lines[end_idx + 1 :])
         if body.startswith("\n"):
             body = body[1:]
         return cls(frontmatter=fm, body=body)
