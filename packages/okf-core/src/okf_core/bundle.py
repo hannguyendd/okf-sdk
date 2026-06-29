@@ -7,6 +7,8 @@ from pathlib import Path
 from okf_core.document import OKFDocument, OKFDocumentError
 
 _INDEX_NAME = "index.md"
+_LOG_NAME = "log.md"
+_RESERVED_NAMES = (_INDEX_NAME, _LOG_NAME)
 _LINK_RE = re.compile(r"\]\(([^)\s]+\.md)(?:#[A-Za-z0-9_\-]*)?\)")
 
 
@@ -103,7 +105,7 @@ class Bundle:
             raise FileNotFoundError(f"Bundle directory not found: {root}")
         concepts: list[Concept] = []
         for md_path in sorted(root.rglob("*.md")):
-            if md_path.name == _INDEX_NAME:
+            if md_path.name in _RESERVED_NAMES:
                 continue
             rel = md_path.relative_to(root).with_suffix("")
             concept_id = "/".join(rel.parts)

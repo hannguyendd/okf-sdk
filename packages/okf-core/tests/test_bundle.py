@@ -89,6 +89,30 @@ def test_load_collects_concepts_excluding_index(tmp_path: Path):
     }
 
 
+def test_load_excludes_log_files(tmp_path: Path):
+    root = tmp_path / "bundle"
+    _write(
+        root / "tables" / "orders.md",
+        """
+        ---
+        type: BigQuery Table
+        title: Orders
+        description: Orders table.
+        timestamp: '2026-05-28T00:00:00+00:00'
+        ---
+        An orders table.
+        """,
+    )
+    # A log.md must NOT be loaded as a concept (RSV-01), at any level.
+    _write(root / "log.md", "# Update Log\n\n## 2026-05-28\n* **Creation**: Added orders.\n")
+    _write(root / "tables" / "log.md", "# Update Log\n\n## 2026-05-28\n* **Creation**: Added orders.\n")
+    b = Bundle.load(root)
+    ids = {c.id for c in b}
+    assert ids == {"tables/orders"}
+    assert "log" not in ids
+    assert "tables/log" not in ids
+
+
 def test_edges_capture_relative_cross_links(tmp_path: Path):
     root = tmp_path / "bundle"
     _make_bundle(root)
