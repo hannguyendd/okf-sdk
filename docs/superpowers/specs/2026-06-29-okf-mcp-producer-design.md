@@ -22,7 +22,8 @@ artifacts (indexes, logs) in sync automatically.
 - A new `packages/okf-mcp` member with an MCP server built on the official
   `mcp` Python SDK (FastMCP), depending on `okf-core`.
 - Write tools: **`add`** (create a concept) and **`patch`** (update one).
-- Read tools: **`get`** (one concept) and **`list`** (enumerate concepts).
+- Read tools: **`get`** (one concept), **`list`** (enumerate concepts), and
+  **`read_index`** (progressive disclosure — read `index.md` files).
 - After every write: regenerate indexes and append a directory-scoped log entry.
 - Keep authoring/writing logic out of `okf-core`, which stays read-only.
 
@@ -192,6 +193,30 @@ Loads the bundle with `okf_core.Bundle.load`, returns a list of
 `type` and/or id `prefix` (e.g. `tables/`). `index.md`/`log.md` are excluded by
 `Bundle.load` already.
 
+### 5.7 `read_index` — progressive disclosure
+
+**Parameters**
+
+- `dir: str | None = None` — bundle-relative directory (e.g. `tables`); the
+  bundle root when omitted.
+- `depth: int = 1` — how many directory levels of indexes to include; an
+  integer in **1–3** (else `ValueError`).
+- `bundle_root: str | None = None` — override.
+
+**Behavior**
+
+Resolve the target directory under the bundle root (must stay within it).
+Collect `index.md` files breadth-first starting at `dir`: level 1 is
+`<dir>/index.md`; each further level descends into on-disk subdirectories that
+contain an `index.md`, up to `depth`. Missing `index.md` files are skipped —
+this tool is read-only and never regenerates.
+
+**Returns** a depth-ordered (breadth-first) list of
+`{ "dir", "path", "content" }`, where `dir` is bundle-relative (`""` for the
+root), `path` is `<dir>/index.md` (bundle-relative), and `content` is the raw
+`index.md` markdown. The list is empty when no index exists at/under `dir`
+within `depth`.
+
 ## 6. Return values
 
 Write tools return a structured summary (serialized to text by FastMCP):
@@ -206,7 +231,7 @@ Write tools return a structured summary (serialized to text by FastMCP):
 }
 ```
 
-Paths are bundle-relative. Read tools return the shapes in §5.5 / §5.6.
+Paths are bundle-relative. Read tools return the shapes in §5.5 / §5.6 / §5.7.
 
 ## 7. Error handling
 
@@ -236,8 +261,11 @@ Primary coverage is unit tests on `operations` against `tmp_path` bundles:
 - index: indexes are regenerated after add/patch (assert an expected `index.md`
   exists/updates).
 - `get` / `list`: shapes and filters; not-found error for `get`.
+- `read_index`: depth=1 returns the single directory index; depth=2/3 descend
+  breadth-first; out-of-range `depth` errors; missing index → skipped/empty;
+  a `dir` escaping the bundle root is rejected.
 
-`test_server.py` is a light smoke test that the FastMCP app registers the four
+`test_server.py` is a light smoke test that the FastMCP app registers the five
 tools and a basic call round-trips (in-memory if the SDK supports it; otherwise
 assert tool registration only). Run with the workspace `uv run pytest`.
 
