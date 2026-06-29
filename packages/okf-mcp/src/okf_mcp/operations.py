@@ -11,6 +11,7 @@ from okf_core import (
     extract_links,
     parse_concept_id,
     regenerate_indexes,
+    rewrite_links,
 )
 
 _RESERVED = ("index", "log")
@@ -229,3 +230,81 @@ def read_index(
         if not level:
             break
     return results
+
+
+def _log_move(
+    from_path: Path,
+    to_path: Path,
+    frontmatter: dict,
+    from_id: str,
+    to_id: str,
+) -> list[Path]:
+    """Append Move entries: an arrival in the dest dir log, and (when the source
+    directory differs) a departure in the source dir log. Returns the logs."""
+    label = str(frontmatter.get("title") or to_path.stem)
+    today = _today_iso()
+    dest_log = to_path.parent / "log.md"
+    _append_log(
+        dest_log,
+        f"* **Move**: Moved [{label}]({to_path.name}) from `{from_id}`.",
+        today,
+    )
+    logs = [dest_log]
+    if from_path.parent != to_path.parent:
+        src_log = from_path.parent / "log.md"
+        _append_log(
+            src_log,
+            f"* **Move**: Moved [{label}]({from_path.name}) to `{to_id}`.",
+            today,
+        )
+        logs.append(src_log)
+    return logs
+
+
+def move_concept(
+    bundle_root: Path, from_concept_id: str, to_concept_id: str
+) -> dict:
+    """Relocate a concept to a new id: rewrite links, reindex, and log.
+
+    Moves the file from ``from_concept_id`` to ``to_concept_id``, rewriting the
+    moved document's own relative links for its new directory. Inbound links from
+    other concepts are rewritten separately (see ``_rewrite_inbound_links``).
+    Preserves frontmatter (including ``timestamp``). Fails if the source is
+    missing, the destination exists, or the two ids are equal.
+    """
+    from_path = _concept_path(bundle_root, from_concept_id)
+    to_path = _concept_path(bundle_root, to_concept_id)
+    if from_path == to_path:
+        raise ValueError("source and destination are the same concept")
+    if not from_path.exists():
+        raise ValueError(f"concept not found: {from_concept_id}")
+    if to_path.exists():
+        raise ValueError(f"destination already exists: {to_concept_id}")
+
+    from_id = "/".join(parse_concept_id(from_concept_id))
+    to_id = "/".join(parse_concept_id(to_concept_id))
+    id_map = {from_id: to_id}
+
+    doc = OKFDocument.parse(from_path.read_text(encoding="utf-8"))
+    new_body = rewrite_links(
+        doc.body or "", from_path.parent, to_path.parent, bundle_root, id_map
+    )
+    to_path.parent.mkdir(parents=True, exist_ok=True)
+    to_path.write_text(
+        OKFDocument(frontmatter=doc.frontmatter, body=new_body).serialize(),
+        encoding="utf-8",
+    )
+    from_path.unlink()
+
+    relinked: list[str] = []  # inbound rewriting added in a later task
+
+    logs = _log_move(from_path, to_path, doc.frontmatter, from_id, to_id)
+    indexes = regenerate_indexes(bundle_root)
+    return {
+        "from": from_id,
+        "to": to_id,
+        "action": "moved",
+        "relinked": relinked,
+        "logs": [Path(p).relative_to(bundle_root).as_posix() for p in logs],
+        "indexes": [Path(p).relative_to(bundle_root).as_posix() for p in indexes],
+    }

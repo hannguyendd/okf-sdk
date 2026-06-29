@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 from okf_core import OKFDocument
 
@@ -29,7 +27,10 @@ def test_resolve_rejects_non_directory(tmp_path):
 
 
 def test_concept_path_builds_nested_path(tmp_path):
-    assert operations._concept_path(tmp_path, "tables/orders") == tmp_path / "tables" / "orders.md"
+    assert (
+        operations._concept_path(tmp_path, "tables/orders")
+        == tmp_path / "tables" / "orders.md"
+    )
 
 
 def test_concept_path_rejects_reserved(tmp_path):
@@ -109,7 +110,9 @@ def test_add_preserves_caller_timestamp(tmp_path):
 
 
 def test_add_writes_log_and_index(tmp_path):
-    operations.add_concept(tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, "")
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
     log = tmp_path / "tables" / "log.md"
     assert "Added [Orders](orders.md)" in log.read_text()
     assert (tmp_path / "tables" / "index.md").exists()
@@ -143,7 +146,9 @@ def test_patch_replaces_body_only_when_given(tmp_path):
 
 
 def test_patch_refreshes_timestamp(tmp_path):
-    operations.add_concept(tmp_path, "a", {"type": "X", "timestamp": "2020-01-01T00:00:00Z"}, "")
+    operations.add_concept(
+        tmp_path, "a", {"type": "X", "timestamp": "2020-01-01T00:00:00Z"}, ""
+    )
     operations.patch_concept(tmp_path, "a", {"title": "T"})
     doc = OKFDocument.parse((tmp_path / "a.md").read_text())
     assert doc.frontmatter["timestamp"] != "2020-01-01T00:00:00Z"
@@ -169,7 +174,10 @@ def test_patch_logs_update(tmp_path):
 
 def test_get_returns_doc(tmp_path):
     operations.add_concept(
-        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, "see [c](customers.md)"
+        tmp_path,
+        "tables/orders",
+        {"type": "Table", "title": "Orders"},
+        "see [c](customers.md)",
     )
     operations.add_concept(tmp_path, "tables/customers", {"type": "Table"}, "")
     res = operations.get_concept(tmp_path, "tables/orders")
@@ -184,8 +192,12 @@ def test_get_missing_errors(tmp_path):
 
 
 def test_list_all(tmp_path):
-    operations.add_concept(tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, "")
-    operations.add_concept(tmp_path, "metrics/mau", {"type": "Metric", "title": "MAU"}, "")
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
+    operations.add_concept(
+        tmp_path, "metrics/mau", {"type": "Metric", "title": "MAU"}, ""
+    )
     ids = {c["id"] for c in operations.list_concepts(tmp_path)}
     assert ids == {"tables/orders", "metrics/mau"}
 
@@ -205,7 +217,9 @@ def test_list_filters_by_prefix(tmp_path):
 
 
 def test_read_index_depth_one(tmp_path):
-    operations.add_concept(tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, "")
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
     res = operations.read_index(tmp_path)
     assert len(res) == 1
     assert res[0]["dir"] == ""
@@ -214,14 +228,18 @@ def test_read_index_depth_one(tmp_path):
 
 
 def test_read_index_depth_two_descends(tmp_path):
-    operations.add_concept(tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, "")
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
     res = operations.read_index(tmp_path, depth=2)
     dirs = {r["dir"] for r in res}
     assert "" in dirs and "tables" in dirs
 
 
 def test_read_index_specific_dir(tmp_path):
-    operations.add_concept(tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, "")
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
     res = operations.read_index(tmp_path, dir="tables")
     assert res[0]["dir"] == "tables"
     assert "Orders" in res[0]["content"]
@@ -239,3 +257,101 @@ def test_read_index_rejects_escape(tmp_path):
 
 def test_read_index_missing_is_empty(tmp_path):
     assert operations.read_index(tmp_path) == []
+
+
+def test_move_renames_in_place(tmp_path):
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
+    res = operations.move_concept(tmp_path, "tables/orders", "tables/sales")
+    assert not (tmp_path / "tables" / "orders.md").exists()
+    assert (tmp_path / "tables" / "sales.md").exists()
+    assert res["action"] == "moved"
+    assert res["from"] == "tables/orders"
+    assert res["to"] == "tables/sales"
+    assert res["relinked"] == []
+
+
+def test_move_across_directories(tmp_path):
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
+    operations.move_concept(tmp_path, "tables/orders", "models/orders")
+    assert not (tmp_path / "tables" / "orders.md").exists()
+    assert (tmp_path / "models" / "orders.md").exists()
+
+
+def test_move_preserves_timestamp(tmp_path):
+    operations.add_concept(
+        tmp_path, "a", {"type": "X", "timestamp": "2020-01-01T00:00:00Z"}, ""
+    )
+    operations.move_concept(tmp_path, "a", "b")
+    doc = OKFDocument.parse((tmp_path / "b.md").read_text())
+    assert doc.frontmatter["timestamp"] == "2020-01-01T00:00:00Z"
+
+
+def test_move_logs_dest_and_source(tmp_path):
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
+    res = operations.move_concept(tmp_path, "tables/orders", "models/orders")
+    dest_log = (tmp_path / "models" / "log.md").read_text()
+    src_log = (tmp_path / "tables" / "log.md").read_text()
+    assert "Moved [Orders](orders.md) from `tables/orders`" in dest_log
+    assert "Moved [Orders](orders.md) to `models/orders`" in src_log
+    assert set(res["logs"]) == {"models/log.md", "tables/log.md"}
+
+
+def test_move_in_dir_logs_once(tmp_path):
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
+    res = operations.move_concept(tmp_path, "tables/orders", "tables/sales")
+    assert res["logs"] == ["tables/log.md"]
+    assert (
+        "Moved [Orders](sales.md) from `tables/orders`"
+        in (tmp_path / "tables" / "log.md").read_text()
+    )
+
+
+def test_move_regenerates_indexes(tmp_path):
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
+    res = operations.move_concept(tmp_path, "tables/orders", "models/orders")
+    assert (tmp_path / "models" / "index.md").exists()
+    assert "models/index.md" in res["indexes"]
+
+
+def test_move_rewrites_moved_doc_own_links(tmp_path):
+    operations.add_concept(tmp_path, "tables/customers", {"type": "Table"}, "")
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table"}, "see [c](customers.md)"
+    )
+    operations.move_concept(tmp_path, "tables/orders", "models/orders")
+    moved = OKFDocument.parse((tmp_path / "models" / "orders.md").read_text())
+    assert "(../tables/customers.md)" in moved.body
+
+
+def test_move_missing_source_errors(tmp_path):
+    with pytest.raises(ValueError):
+        operations.move_concept(tmp_path, "nope", "dest")
+
+
+def test_move_existing_dest_errors(tmp_path):
+    operations.add_concept(tmp_path, "a", {"type": "X"}, "")
+    operations.add_concept(tmp_path, "b", {"type": "X"}, "")
+    with pytest.raises(ValueError):
+        operations.move_concept(tmp_path, "a", "b")
+
+
+def test_move_same_id_errors(tmp_path):
+    operations.add_concept(tmp_path, "a", {"type": "X"}, "")
+    with pytest.raises(ValueError):
+        operations.move_concept(tmp_path, "a", "a")
+
+
+def test_move_rejects_reserved_dest(tmp_path):
+    operations.add_concept(tmp_path, "a", {"type": "X"}, "")
+    with pytest.raises(ValueError):
+        operations.move_concept(tmp_path, "a", "tables/index")
