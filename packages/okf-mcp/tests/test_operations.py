@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from okf_core import OKFDocument
 
 from okf_mcp import operations
 
@@ -66,3 +67,50 @@ def test_append_log_inserts_new_today_above_older(tmp_path):
     operations._append_log(log, "* **Update**: Updated [A](a.md).", "2026-06-29")
     lines = log.read_text().splitlines()
     assert lines.index("## 2026-06-29") < lines.index("## 2026-06-01")
+
+
+def test_add_writes_concept(tmp_path):
+    res = operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, "# Schema\n"
+    )
+    f = tmp_path / "tables" / "orders.md"
+    assert f.exists()
+    doc = OKFDocument.parse(f.read_text())
+    assert doc.frontmatter["type"] == "Table"
+    assert doc.frontmatter["title"] == "Orders"
+    assert "timestamp" in doc.frontmatter
+    assert "# Schema" in doc.body
+    assert res["action"] == "created"
+    assert res["path"] == "tables/orders.md"
+
+
+def test_add_rejects_existing(tmp_path):
+    operations.add_concept(tmp_path, "a", {"type": "X"}, "")
+    with pytest.raises(ValueError):
+        operations.add_concept(tmp_path, "a", {"type": "X"}, "")
+
+
+def test_add_requires_type(tmp_path):
+    with pytest.raises(ValueError):
+        operations.add_concept(tmp_path, "a", {"title": "no type"}, "")
+
+
+def test_add_rejects_reserved_id(tmp_path):
+    with pytest.raises(ValueError):
+        operations.add_concept(tmp_path, "tables/index", {"type": "X"}, "")
+
+
+def test_add_preserves_caller_timestamp(tmp_path):
+    operations.add_concept(
+        tmp_path, "a", {"type": "X", "timestamp": "2020-01-01T00:00:00Z"}, ""
+    )
+    doc = OKFDocument.parse((tmp_path / "a.md").read_text())
+    assert doc.frontmatter["timestamp"] == "2020-01-01T00:00:00Z"
+
+
+def test_add_writes_log_and_index(tmp_path):
+    operations.add_concept(tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, "")
+    log = tmp_path / "tables" / "log.md"
+    assert "Added [Orders](orders.md)" in log.read_text()
+    assert (tmp_path / "tables" / "index.md").exists()
+    assert (tmp_path / "index.md").exists()
