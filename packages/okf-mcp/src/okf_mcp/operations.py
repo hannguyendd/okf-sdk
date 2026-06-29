@@ -43,3 +43,25 @@ def _now_iso() -> str:
 
 def _today_iso() -> str:
     return date.today().isoformat()
+
+
+def _append_log(log_path: Path, entry: str, today: str) -> None:
+    """Append ``entry`` under a ``## <today>`` group in ``log_path`` (newest-first).
+
+    Creates the file with a ``# Update Log`` title when absent; prepends the
+    entry under an existing today group; otherwise inserts a new today group
+    above older date groups.
+    """
+    heading = f"## {today}"
+    if not log_path.exists():
+        log_path.write_text(f"# Update Log\n\n{heading}\n{entry}\n", encoding="utf-8")
+        return
+    lines = log_path.read_text(encoding="utf-8").splitlines()
+    first_h2 = next((i for i, ln in enumerate(lines) if ln.startswith("## ")), None)
+    if first_h2 is not None and lines[first_h2].strip() == heading:
+        new_lines = lines[: first_h2 + 1] + [entry] + lines[first_h2 + 1 :]
+    elif first_h2 is not None:
+        new_lines = lines[:first_h2] + [heading, entry, ""] + lines[first_h2:]
+    else:
+        new_lines = lines + ["", heading, entry]
+    log_path.write_text("\n".join(new_lines).rstrip() + "\n", encoding="utf-8")
