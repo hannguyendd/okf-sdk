@@ -49,16 +49,16 @@ def test_regenerate_groups_by_type_and_links_relative(tmp_path: Path):
     written_names = {p.parent.name for p in written}
     assert {"bundle", "datasets", "tables"} <= written_names | {root.name}
 
-    tables_index = (root / "tables" / "index.md").read_text(encoding="utf-8")
+    tables_index = (root / "tables" / "_index.md").read_text(encoding="utf-8")
     assert tables_index.startswith("# BigQuery Table")
     assert "[events_*](events_.md)" in tables_index
     assert "[users](users.md)" in tables_index
     assert "Daily-sharded GA4 event tables." in tables_index
 
-    root_index = (root / "index.md").read_text(encoding="utf-8")
+    root_index = (root / "_index.md").read_text(encoding="utf-8")
     assert "# Subdirectories" in root_index
-    assert "(datasets/index.md) - GA4 obfuscated ecommerce sample." in root_index
-    assert "(tables/index.md) - stub: 2 items" in root_index
+    assert "(datasets/_index.md) - GA4 obfuscated ecommerce sample." in root_index
+    assert "(tables/_index.md) - stub: 2 items" in root_index
 
 
 def test_regenerate_skips_empty_directories(tmp_path: Path):
@@ -68,7 +68,7 @@ def test_regenerate_skips_empty_directories(tmp_path: Path):
 
     written = regenerate_indexes(root, synthesize=_stub_synth)
     assert written == []
-    assert not (root / "empty_dir" / "index.md").exists()
+    assert not (root / "empty_dir" / "_index.md").exists()
 
 
 def test_regenerate_single_child_reuses_description(tmp_path: Path):
@@ -89,8 +89,8 @@ def test_regenerate_single_child_reuses_description(tmp_path: Path):
 
     regenerate_indexes(root, synthesize=counting_synth)
 
-    root_index = (root / "index.md").read_text(encoding="utf-8")
-    assert "(datasets/index.md) - The only dataset in this bundle." in root_index
+    root_index = (root / "_index.md").read_text(encoding="utf-8")
+    assert "(datasets/_index.md) - The only dataset in this bundle." in root_index
     assert call_count == 0
 
 
@@ -101,8 +101,8 @@ def test_default_fallback_synthesizer_summarizes_multi_child_dir(tmp_path: Path)
 
     regenerate_indexes(root)  # no synthesize override -> deterministic fallback
 
-    root_index = (root / "index.md").read_text(encoding="utf-8")
-    assert "(tables/index.md) - Contains 2 entries: Alpha, Beta." in root_index
+    root_index = (root / "_index.md").read_text(encoding="utf-8")
+    assert "(tables/_index.md) - Contains 2 entries: Alpha, Beta." in root_index
 
 
 def test_regenerate_nonexistent_root_returns_empty(tmp_path: Path):

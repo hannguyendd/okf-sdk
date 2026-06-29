@@ -5,6 +5,9 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from okf_core import (
+    INDEX_FILENAME,
+    LOG_FILENAME,
+    RESERVED_STEMS,
     Bundle,
     OKFDocument,
     concept_id_to_path,
@@ -13,8 +16,6 @@ from okf_core import (
     regenerate_indexes,
     rewrite_links,
 )
-
-_RESERVED = ("index", "log")
 
 
 def resolve_bundle_root(arg: str | None, env_default: Path | None) -> Path:
@@ -33,7 +34,7 @@ def resolve_bundle_root(arg: str | None, env_default: Path | None) -> Path:
 
 def _concept_path(bundle_root: Path, concept_id: str) -> Path:
     parts = parse_concept_id(concept_id)
-    if parts[-1] in _RESERVED:
+    if parts[-1] in RESERVED_STEMS:
         raise ValueError(
             f"concept_id {concept_id!r} collides with a reserved file name"
         )
@@ -76,7 +77,7 @@ def _append_log(log_path: Path, entry: str, today: str) -> None:
 
 
 def _append_log_for(concept_path: Path, label: str, action: str, verb: str) -> Path:
-    log_path = concept_path.parent / "log.md"
+    log_path = concept_path.parent / LOG_FILENAME
     entry = f"* **{action}**: {verb} [{label}]({concept_path.name})."
     _append_log(log_path, entry, _today_iso())
     return log_path
@@ -199,10 +200,10 @@ def _rel_dir(bundle_root: Path, directory: Path) -> str:
 def read_index(
     bundle_root: Path, dir: str | None = None, depth: int = 1
 ) -> list[dict]:
-    """Return ``index.md`` files for progressive disclosure, breadth-first.
+    """Return ``_index.md`` files for progressive disclosure, breadth-first.
 
     Starts at ``dir`` (bundle root if omitted) and descends ``depth`` levels
-    (1..3). Missing ``index.md`` files are skipped; read-only.
+    (1..3). Missing ``_index.md`` files are skipped; read-only.
     """
     if not isinstance(depth, int) or isinstance(depth, bool) or not 1 <= depth <= 3:
         raise ValueError("depth must be an integer in 1..3")
@@ -215,7 +216,7 @@ def read_index(
     for _ in range(depth):
         nxt: list[Path] = []
         for d in level:
-            index_file = d / "index.md"
+            index_file = d / INDEX_FILENAME
             if index_file.is_file():
                 results.append(
                     {
@@ -243,7 +244,7 @@ def _log_move(
     directory differs) a departure in the source dir log. Returns the logs."""
     label = str(frontmatter.get("title") or to_path.stem)
     today = _today_iso()
-    dest_log = to_path.parent / "log.md"
+    dest_log = to_path.parent / LOG_FILENAME
     _append_log(
         dest_log,
         f"* **Move**: Moved [{label}]({to_path.name}) from `{from_id}`.",
@@ -251,7 +252,7 @@ def _log_move(
     )
     logs = [dest_log]
     if from_path.parent != to_path.parent:
-        src_log = from_path.parent / "log.md"
+        src_log = from_path.parent / LOG_FILENAME
         _append_log(
             src_log,
             f"* **Move**: Moved [{label}]({from_path.name}) to `{to_id}`.",

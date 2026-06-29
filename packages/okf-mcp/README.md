@@ -101,11 +101,11 @@ traffic — tools return values rather than printing.
 - `patch(concept_id, frontmatter?, body?, bundle_root?)` — update a concept (merge-only frontmatter; body replaced only when given).
 - `get(concept_id, bundle_root?)` — read one concept (frontmatter, body, outgoing links).
 - `list(type?, prefix?, bundle_root?)` — enumerate concepts, optionally filtered.
-- `read_index(dir?, depth=1, bundle_root?)` — read `index.md` files for progressive disclosure (depth 1-3).
+- `read_index(dir?, depth=1, bundle_root?)` — read `_index.md` files for progressive disclosure (depth 1-3).
 - `move(from_concept_id, to_concept_id, bundle_root?)` — relocate/rename a concept; rewrites inbound and own links, regenerates indexes, logs a Move entry (fails if source missing, destination exists, or ids equal).
 
 Every write tool (`add`/`patch`/`move`) regenerates indexes and appends a dated
-entry to the relevant directory `log.md`. `add`/`patch` manage the `timestamp`
+entry to the relevant directory `_log.md`. `add`/`patch` manage the `timestamp`
 frontmatter automatically; `move` preserves it.
 
 ## Development

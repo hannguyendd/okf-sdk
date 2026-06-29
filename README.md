@@ -6,7 +6,7 @@ A uv workspace of Open Knowledge Format (OKF) tooling.
 
 - [`packages/okf-core`](packages/okf-core/) — core library for reading and
   indexing OKF bundles: parse documents, load a bundle into an in-memory concept
-  graph (cross-links + backlinks), and regenerate `index.md` listings. Only
+  graph (cross-links + backlinks), and regenerate `_index.md` listings. Only
   runtime dependency is PyYAML.
 
 ## Development

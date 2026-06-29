@@ -19,7 +19,7 @@ def _rules_for(violations: list[Violation], path: str) -> set[str]:
 
 def _make_conformant_bundle(root: Path) -> None:
     _write(
-        root / "index.md",
+        root / "_index.md",
         """
         ---
         okf_version: "0.1"
@@ -31,7 +31,7 @@ def _make_conformant_bundle(root: Path) -> None:
         """,
     )
     _write(
-        root / "log.md",
+        root / "_log.md",
         """
         # Update Log
 
@@ -40,7 +40,7 @@ def _make_conformant_bundle(root: Path) -> None:
         """,
     )
     _write(
-        root / "tables" / "index.md",
+        root / "tables" / "_index.md",
         """
         # Tables
 
@@ -148,7 +148,7 @@ def test_invalid_utf8_flags_doc_01(tmp_path: Path):
 def test_non_root_index_with_frontmatter_flags_idx_01(tmp_path: Path):
     root = tmp_path / "bundle"
     _write(
-        root / "tables" / "index.md",
+        root / "tables" / "_index.md",
         """
         ---
         type: Index
@@ -160,13 +160,13 @@ def test_non_root_index_with_frontmatter_flags_idx_01(tmp_path: Path):
         * [Orders](orders.md) - Orders.
         """,
     )
-    assert "IDX-01" in _rules_for(validate_bundle(root), "tables/index.md")
+    assert "IDX-01" in _rules_for(validate_bundle(root), "tables/_index.md")
 
 
 def test_root_index_with_only_okf_version_is_allowed(tmp_path: Path):
     root = tmp_path / "bundle"
     _write(
-        root / "index.md",
+        root / "_index.md",
         """
         ---
         okf_version: "0.1"
@@ -177,13 +177,13 @@ def test_root_index_with_only_okf_version_is_allowed(tmp_path: Path):
         * [tables/](tables/) - Tables.
         """,
     )
-    assert "IDX-01" not in _rules_for(validate_bundle(root), "index.md")
+    assert "IDX-01" not in _rules_for(validate_bundle(root), "_index.md")
 
 
 def test_root_index_with_extra_frontmatter_key_flags_idx_01(tmp_path: Path):
     root = tmp_path / "bundle"
     _write(
-        root / "index.md",
+        root / "_index.md",
         """
         ---
         okf_version: "0.1"
@@ -195,22 +195,22 @@ def test_root_index_with_extra_frontmatter_key_flags_idx_01(tmp_path: Path):
         * [tables/](tables/) - Tables.
         """,
     )
-    assert "IDX-01" in _rules_for(validate_bundle(root), "index.md")
+    assert "IDX-01" in _rules_for(validate_bundle(root), "_index.md")
 
 
 def test_index_without_heading_flags_idx_02(tmp_path: Path):
     root = tmp_path / "bundle"
     _write(
-        root / "tables" / "index.md",
+        root / "tables" / "_index.md",
         "* [Orders](orders.md) - Orders.\n* [Customers](customers.md) - Customers.\n",
     )
-    assert "IDX-02" in _rules_for(validate_bundle(root), "tables/index.md")
+    assert "IDX-02" in _rules_for(validate_bundle(root), "tables/_index.md")
 
 
 def test_log_non_iso_date_heading_flags_log_01(tmp_path: Path):
     root = tmp_path / "bundle"
     _write(
-        root / "log.md",
+        root / "_log.md",
         """
         # Update Log
 
@@ -218,13 +218,13 @@ def test_log_non_iso_date_heading_flags_log_01(tmp_path: Path):
         * **Creation**: Added the orders table.
         """,
     )
-    assert "LOG-01" in _rules_for(validate_bundle(root), "log.md")
+    assert "LOG-01" in _rules_for(validate_bundle(root), "_log.md")
 
 
 def test_log_with_frontmatter_flags_rsv_01(tmp_path: Path):
     root = tmp_path / "bundle"
     _write(
-        root / "log.md",
+        root / "_log.md",
         """
         ---
         type: Log
@@ -236,7 +236,7 @@ def test_log_with_frontmatter_flags_rsv_01(tmp_path: Path):
         * **Creation**: Added the orders table.
         """,
     )
-    assert "RSV-01" in _rules_for(validate_bundle(root), "log.md")
+    assert "RSV-01" in _rules_for(validate_bundle(root), "_log.md")
 
 
 def test_violation_has_rule_path_and_message(tmp_path: Path):

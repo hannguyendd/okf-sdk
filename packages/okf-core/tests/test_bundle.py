@@ -70,8 +70,8 @@ def _make_bundle(root: Path) -> None:
         COUNT(DISTINCT user_id) per day.
         """,
     )
-    # An index.md must NOT be loaded as a concept.
-    _write(root / "index.md", "# My Bundle\n- tables/users\n- tables/events\n")
+    # An _index.md must NOT be loaded as a concept.
+    _write(root / "_index.md", "# My Bundle\n- tables/users\n- tables/events\n")
 
 
 def test_load_collects_concepts_excluding_index(tmp_path: Path):
@@ -80,7 +80,7 @@ def test_load_collects_concepts_excluding_index(tmp_path: Path):
     b = Bundle.load(root)
     assert len(b) == 4
     ids = {c.id for c in b}
-    assert "index" not in ids
+    assert "_index" not in ids
     assert ids == {
         "datasets/my_dataset",
         "tables/users",
@@ -103,14 +103,14 @@ def test_load_excludes_log_files(tmp_path: Path):
         An orders table.
         """,
     )
-    # A log.md must NOT be loaded as a concept (RSV-01), at any level.
-    _write(root / "log.md", "# Update Log\n\n## 2026-05-28\n* **Creation**: Added orders.\n")
-    _write(root / "tables" / "log.md", "# Update Log\n\n## 2026-05-28\n* **Creation**: Added orders.\n")
+    # A _log.md must NOT be loaded as a concept (RSV-01), at any level.
+    _write(root / "_log.md", "# Update Log\n\n## 2026-05-28\n* **Creation**: Added orders.\n")
+    _write(root / "tables" / "_log.md", "# Update Log\n\n## 2026-05-28\n* **Creation**: Added orders.\n")
     b = Bundle.load(root)
     ids = {c.id for c in b}
     assert ids == {"tables/orders"}
-    assert "log" not in ids
-    assert "tables/log" not in ids
+    assert "_log" not in ids
+    assert "tables/_log" not in ids
 
 
 def test_edges_capture_relative_cross_links(tmp_path: Path):

@@ -35,7 +35,7 @@ def test_concept_path_builds_nested_path(tmp_path):
 
 def test_concept_path_rejects_reserved(tmp_path):
     with pytest.raises(ValueError):
-        operations._concept_path(tmp_path, "tables/index")
+        operations._concept_path(tmp_path, "tables/_index")
 
 
 def test_concept_path_rejects_bad_segment(tmp_path):
@@ -44,7 +44,7 @@ def test_concept_path_rejects_bad_segment(tmp_path):
 
 
 def test_append_log_creates_file(tmp_path):
-    log = tmp_path / "log.md"
+    log = tmp_path / "_log.md"
     operations._append_log(log, "* **Creation**: Added [A](a.md).", "2026-06-29")
     text = log.read_text()
     assert "# Update Log" in text
@@ -53,7 +53,7 @@ def test_append_log_creates_file(tmp_path):
 
 
 def test_append_log_prepends_under_existing_today(tmp_path):
-    log = tmp_path / "log.md"
+    log = tmp_path / "_log.md"
     log.write_text("# Update Log\n\n## 2026-06-29\n* **Creation**: Added [A](a.md).\n")
     operations._append_log(log, "* **Update**: Updated [B](b.md).", "2026-06-29")
     lines = log.read_text().splitlines()
@@ -63,7 +63,7 @@ def test_append_log_prepends_under_existing_today(tmp_path):
 
 
 def test_append_log_inserts_new_today_above_older(tmp_path):
-    log = tmp_path / "log.md"
+    log = tmp_path / "_log.md"
     log.write_text("# Update Log\n\n## 2026-06-01\n* **Creation**: Added [A](a.md).\n")
     operations._append_log(log, "* **Update**: Updated [A](a.md).", "2026-06-29")
     lines = log.read_text().splitlines()
@@ -98,7 +98,7 @@ def test_add_requires_type(tmp_path):
 
 def test_add_rejects_reserved_id(tmp_path):
     with pytest.raises(ValueError):
-        operations.add_concept(tmp_path, "tables/index", {"type": "X"}, "")
+        operations.add_concept(tmp_path, "tables/_index", {"type": "X"}, "")
 
 
 def test_add_preserves_caller_timestamp(tmp_path):
@@ -113,10 +113,10 @@ def test_add_writes_log_and_index(tmp_path):
     operations.add_concept(
         tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
     )
-    log = tmp_path / "tables" / "log.md"
+    log = tmp_path / "tables" / "_log.md"
     assert "Added [Orders](orders.md)" in log.read_text()
-    assert (tmp_path / "tables" / "index.md").exists()
-    assert (tmp_path / "index.md").exists()
+    assert (tmp_path / "tables" / "_index.md").exists()
+    assert (tmp_path / "_index.md").exists()
 
 
 def test_patch_merges_only_given_keys(tmp_path):
@@ -169,7 +169,7 @@ def test_patch_missing_errors(tmp_path):
 def test_patch_logs_update(tmp_path):
     operations.add_concept(tmp_path, "a", {"type": "X", "title": "A"}, "")
     operations.patch_concept(tmp_path, "a", {"title": "A2"})
-    assert "Updated [A2](a.md)" in (tmp_path / "log.md").read_text()
+    assert "Updated [A2](a.md)" in (tmp_path / "_log.md").read_text()
 
 
 def test_get_returns_doc(tmp_path):
@@ -223,7 +223,7 @@ def test_read_index_depth_one(tmp_path):
     res = operations.read_index(tmp_path)
     assert len(res) == 1
     assert res[0]["dir"] == ""
-    assert res[0]["path"] == "index.md"
+    assert res[0]["path"] == "_index.md"
     assert "tables" in res[0]["content"]
 
 
@@ -295,11 +295,11 @@ def test_move_logs_dest_and_source(tmp_path):
         tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
     )
     res = operations.move_concept(tmp_path, "tables/orders", "models/orders")
-    dest_log = (tmp_path / "models" / "log.md").read_text()
-    src_log = (tmp_path / "tables" / "log.md").read_text()
+    dest_log = (tmp_path / "models" / "_log.md").read_text()
+    src_log = (tmp_path / "tables" / "_log.md").read_text()
     assert "Moved [Orders](orders.md) from `tables/orders`" in dest_log
     assert "Moved [Orders](orders.md) to `models/orders`" in src_log
-    assert set(res["logs"]) == {"models/log.md", "tables/log.md"}
+    assert set(res["logs"]) == {"models/_log.md", "tables/_log.md"}
 
 
 def test_move_in_dir_logs_once(tmp_path):
@@ -307,10 +307,10 @@ def test_move_in_dir_logs_once(tmp_path):
         tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
     )
     res = operations.move_concept(tmp_path, "tables/orders", "tables/sales")
-    assert res["logs"] == ["tables/log.md"]
+    assert res["logs"] == ["tables/_log.md"]
     assert (
         "Moved [Orders](sales.md) from `tables/orders`"
-        in (tmp_path / "tables" / "log.md").read_text()
+        in (tmp_path / "tables" / "_log.md").read_text()
     )
 
 
@@ -319,8 +319,8 @@ def test_move_regenerates_indexes(tmp_path):
         tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
     )
     res = operations.move_concept(tmp_path, "tables/orders", "models/orders")
-    assert (tmp_path / "models" / "index.md").exists()
-    assert "models/index.md" in res["indexes"]
+    assert (tmp_path / "models" / "_index.md").exists()
+    assert "models/_index.md" in res["indexes"]
 
 
 def test_move_rewrites_moved_doc_own_links(tmp_path):
@@ -354,7 +354,7 @@ def test_move_same_id_errors(tmp_path):
 def test_move_rejects_reserved_dest(tmp_path):
     operations.add_concept(tmp_path, "a", {"type": "X"}, "")
     with pytest.raises(ValueError):
-        operations.move_concept(tmp_path, "a", "tables/index")
+        operations.move_concept(tmp_path, "a", "tables/_index")
 
 
 def test_move_rewrites_inbound_relative_link(tmp_path):

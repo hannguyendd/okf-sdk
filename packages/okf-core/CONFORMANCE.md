@@ -34,11 +34,11 @@ repository (recommended), an archive, or a subdirectory of a larger repo.
 
 ```
 path/to/bundle/
-├── index.md              # optional — directory listing (progressive disclosure)
-├── log.md                # optional — chronological update history
+├── _index.md              # optional — directory listing (progressive disclosure)
+├── _log.md                # optional — chronological update history
 ├── <concept>.md          # a concept at the bundle root
 └── <subdirectory>/       # subdirectories group concepts
-    ├── index.md
+    ├── _index.md
     ├── <concept>.md
     └── <subdirectory>/
         └── …
@@ -59,8 +59,8 @@ filenames are special at **any** level of the tree and must never be a concept
 | File | Role | Frontmatter? | Governing rules |
 |------|------|--------------|-----------------|
 | `<name>.md` (concept) | A single unit of knowledge — a tangible asset (table, API), an abstract idea (metric, process), or anything between. | **Required** — a YAML mapping with a `type` (§1.3). | `DOC-*`, `FM-*` |
-| `index.md` | Directory listing enabling **progressive disclosure** — lets a reader see what is available before opening documents. | **None** — except the bundle-root `index.md`, which may declare `okf_version`. | `IDX-*`, `VER-01` |
-| `log.md` | Chronological history of changes to the scope (level) it sits in. | **None.** | `LOG-*` |
+| `_index.md` | Directory listing enabling **progressive disclosure** — lets a reader see what is available before opening documents. | **None** — except the bundle-root `_index.md`, which may declare `okf_version`. | `IDX-*`, `VER-01` |
+| `_log.md` | Chronological history of changes to the scope (level) it sits in. | **None.** | `LOG-*` |
 
 ### 1.3 Frontmatter fields
 
@@ -72,12 +72,12 @@ never reject a document for an unrecognized field.
 |-------|--------|---------|------|
 | `type` | **Required** | Short string naming the kind of concept (e.g. `BigQuery Table`, `Metric`, `Playbook`). Drives routing, filtering, presentation. Not registered centrally — any non-empty string is valid. | `FM-01` |
 | `title` | Recommended | Human-readable display name. If absent, a title may be derived from the filename. | `FM-02` |
-| `description` | Recommended | One-sentence summary. Used in `index.md` entries, search snippets, previews. | `FM-02` |
+| `description` | Recommended | One-sentence summary. Used in `_index.md` entries, search snippets, previews. | `FM-02` |
 | `resource` | Recommended (when the concept is bound to a resource) | Canonical URI of the underlying asset. Absent for purely abstract concepts. | `FM-02` |
 | `tags` | Recommended | YAML list of short strings for cross-cutting categorization. | `FM-02`, `FM-04` |
 | `timestamp` | Recommended | ISO 8601 datetime of the last meaningful change. | `FM-02`, `FM-03` |
 | *(any other key)* | Optional | Producer-defined extension. Preserved on round-trip; never a rejection cause. | `FM-05` |
-| `okf_version` | Optional — **bundle-root `index.md` only** | Declares the OKF version the bundle targets. The only frontmatter permitted in any `index.md`. | `VER-01` |
+| `okf_version` | Optional — **bundle-root `_index.md` only** | Declares the OKF version the bundle targets. The only frontmatter permitted in any `_index.md`. | `VER-01` |
 
 The body (everything after the closing `---`) is free-form markdown. These
 heading names carry **conventional** meaning and should be used when applicable:
@@ -145,8 +145,8 @@ Categories: `DOC` document structure · `FM` frontmatter · `RSV` reserved files
 
 | ID | Level | Rule | How to verify | SPEC |
 |----|-------|------|---------------|------|
-| **RSV-01** | MUST NOT | `index.md` and `log.md` are not used as concept documents. | No file named `index.md` or `log.md` is treated or validated as a concept. | §3.1 |
-| **RSV-02** | MUST | Every `.md` file in the tree is either a reserved file (`index.md` / `log.md`) or a concept document — there is no third role. | Each `.md` file classifies as `index.md`, `log.md`, or a concept document. | §3, §3.1 |
+| **RSV-01** | MUST NOT | `_index.md` and `_log.md` are not used as concept documents. | No file named `_index.md` or `_log.md` is treated or validated as a concept. | §3.1 |
+| **RSV-02** | MUST | Every `.md` file in the tree is either a reserved file (`_index.md` / `_log.md`) or a concept document — there is no third role. | Each `.md` file classifies as `_index.md`, `_log.md`, or a concept document. | §3, §3.1 |
 
 ### 4.4 LNK — cross-links
 
@@ -159,15 +159,15 @@ Categories: `DOC` document structure · `FM` frontmatter · `RSV` reserved files
 
 | ID | Level | Rule | How to verify | SPEC |
 |----|-------|------|---------------|------|
-| **IDX-01** | MUST NOT | An `index.md` carries no frontmatter — **except** the bundle-root `index.md`, which may carry frontmatter solely to declare `okf_version`. | A non-root `index.md` has no leading `---` block. A root `index.md` with frontmatter declares only `okf_version`. | §6, §11 |
-| **IDX-02** | MUST | When present, an `index.md` body consists of one or more `#` section headings whose entries are markdown-link list items pointing at concepts or subdirectories. | File contains ≥1 heading; list entries are markdown links. | §6, §9.3 |
+| **IDX-01** | MUST NOT | An `_index.md` carries no frontmatter — **except** the bundle-root `_index.md`, which may carry frontmatter solely to declare `okf_version`. | A non-root `_index.md` has no leading `---` block. A root `_index.md` with frontmatter declares only `okf_version`. | §6, §11 |
+| **IDX-02** | MUST | When present, an `_index.md` body consists of one or more `#` section headings whose entries are markdown-link list items pointing at concepts or subdirectories. | File contains ≥1 heading; list entries are markdown links. | §6, §9.3 |
 | **IDX-03** | SHOULD | Each entry includes the linked concept's `description`. | — | §6 |
 
 ### 4.6 LOG — log files
 
 | ID | Level | Rule | How to verify | SPEC |
 |----|-------|------|---------------|------|
-| **LOG-01** | MUST | When present, a `log.md` groups entries under date headings, and every date-group heading uses ISO 8601 `YYYY-MM-DD` form. | Every date-group heading matches `YYYY-MM-DD`. | §7, §9.3 |
+| **LOG-01** | MUST | When present, a `_log.md` groups entries under date headings, and every date-group heading uses ISO 8601 `YYYY-MM-DD` form. | Every date-group heading matches `YYYY-MM-DD`. | §7, §9.3 |
 | **LOG-02** | SHOULD | Entries are ordered newest-first. | — | §7 |
 | **LOG-03** | MAY | A leading bold keyword on each entry (`**Update**`, `**Creation**`, `**Deprecation**`, …) is convention, not required. | — | §7 |
 
@@ -182,7 +182,7 @@ Categories: `DOC` document structure · `FM` frontmatter · `RSV` reserved files
 
 | ID | Level | Rule | How to verify | SPEC |
 |----|-------|------|---------------|------|
-| **VER-01** | MAY | A bundle may declare its OKF version via `okf_version` in the bundle-root `index.md` frontmatter — the only place frontmatter is permitted in any `index.md`. | — | §11 |
+| **VER-01** | MAY | A bundle may declare its OKF version via `okf_version` in the bundle-root `_index.md` frontmatter — the only place frontmatter is permitted in any `_index.md`. | — | §11 |
 
 ---
 
@@ -193,7 +193,7 @@ against it: if every box holds, the bundle is **conformant** with OKF v0.1; a
 single failing box makes it **non-conformant**. Full statements, verification, and
 SPEC references are in §4.
 
-**For every concept document** (every `.md` that is not `index.md` / `log.md`):
+**For every concept document** (every `.md` that is not `_index.md` / `_log.md`):
 
 - [ ] **`DOC-01`** — the file decodes as UTF-8.
 - [ ] **`DOC-02`** — it opens with a frontmatter block: a line that is exactly `---`, then a closing line that is exactly `---`.
@@ -202,11 +202,11 @@ SPEC references are in §4.
 
 **For the bundle as a whole:**
 
-- [ ] **`RSV-01`** — no `index.md` or `log.md` is used as a concept.
-- [ ] **`RSV-02`** — every `.md` file is a concept, an `index.md`, or a `log.md`.
-- [ ] **`IDX-01`** — no `index.md` carries frontmatter, except the bundle-root `index.md`, which may declare only `okf_version`.
-- [ ] **`IDX-02`** — every `index.md` present is `#` headings whose entries are markdown-link list items.
-- [ ] **`LOG-01`** — every `log.md` present uses ISO `YYYY-MM-DD` date-group headings.
+- [ ] **`RSV-01`** — no `_index.md` or `_log.md` is used as a concept.
+- [ ] **`RSV-02`** — every `.md` file is a concept, an `_index.md`, or a `_log.md`.
+- [ ] **`IDX-01`** — no `_index.md` carries frontmatter, except the bundle-root `_index.md`, which may declare only `okf_version`.
+- [ ] **`IDX-02`** — every `_index.md` present is `#` headings whose entries are markdown-link list items.
+- [ ] **`LOG-01`** — every `_log.md` present uses ISO `YYYY-MM-DD` date-group headings.
 
 Everything not on this list (the `SHOULD` / `MAY` rules and §6) cannot make a
 bundle non-conformant.
@@ -225,7 +225,7 @@ a bundle for any of them:
   registry (see `FM-01`: any non-empty string passes).
 - Unknown additional frontmatter keys.
 - Broken cross-links (dangling link targets) — see `LNK-02`.
-- Missing `index.md` files at any level, including the bundle root.
+- Missing `_index.md` files at any level, including the bundle root.
 
 This latitude is intentional: it keeps a bundle usable as it grows, is
 refactored, and is partially generated by agents.
@@ -254,20 +254,20 @@ relax a `MUST`; a major bump may add or tighten `MUST` / `MUST NOT` rules.
 ## Appendix C — Example of a conformant bundle
 
 A complete bundle that satisfies every MUST / MUST NOT rule. It exercises all
-three file roles, the only permitted `index.md` frontmatter (`okf_version`),
+three file roles, the only permitted `_index.md` frontmatter (`okf_version`),
 cross-links in the recommended absolute form, and a citation block.
 
 ```
 acme-knowledge/
-├── index.md                 # root index — declares okf_version (IDX-01 exception, VER-01)
-├── log.md                   # update history (LOG-*)
+├── _index.md                 # root index — declares okf_version (IDX-01 exception, VER-01)
+├── _log.md                   # update history (LOG-*)
 └── tables/
-    ├── index.md             # subdirectory index — no frontmatter (IDX-01)
+    ├── _index.md             # subdirectory index — no frontmatter (IDX-01)
     ├── orders.md            # concept (DOC-*, FM-*)
     └── customers.md         # concept (DOC-*, FM-*)
 ```
 
-`index.md` (bundle root):
+`_index.md` (bundle root):
 
 ```markdown
 ---
@@ -279,7 +279,7 @@ okf_version: "0.1"
 * [tables/](tables/) - Warehouse tables for the sales domain.
 ```
 
-`log.md`:
+`_log.md`:
 
 ```markdown
 # Update Log
@@ -288,10 +288,10 @@ okf_version: "0.1"
 * **Creation**: Added [orders](/tables/orders.md) and [customers](/tables/customers.md).
 
 ## 2026-05-15
-* **Initialization**: Created the bundle structure and root [index](/index.md).
+* **Initialization**: Created the bundle structure and root [index](/_index.md).
 ```
 
-`tables/index.md`:
+`tables/_index.md`:
 
 ```markdown
 # Tables
@@ -357,11 +357,11 @@ Referenced by [orders](/tables/orders.md).
 | `DOC-02` | Each concept opens with a `---` / `---` frontmatter block. |
 | `DOC-03` | Each frontmatter block is a YAML mapping. |
 | `FM-01` | Both concepts carry a non-empty `type` (`BigQuery Table`). |
-| `RSV-01` | `index.md` and `log.md` hold listings/history — never concept content. |
-| `RSV-02` | Every `.md` is exactly one of: `index.md`, `log.md`, or a concept. |
-| `IDX-01` | Only the root `index.md` has frontmatter, and only `okf_version`; `tables/index.md` has none. |
+| `RSV-01` | `_index.md` and `_log.md` hold listings/history — never concept content. |
+| `RSV-02` | Every `.md` is exactly one of: `_index.md`, `_log.md`, or a concept. |
+| `IDX-01` | Only the root `_index.md` has frontmatter, and only `okf_version`; `tables/_index.md` has none. |
 | `IDX-02` | Both index files are `#` headings followed by markdown-link list items. |
-| `LOG-01` | `log.md` date headings are ISO `YYYY-MM-DD`. |
+| `LOG-01` | `_log.md` date headings are ISO `YYYY-MM-DD`. |
 
 It also follows the guidance: full recommended frontmatter (`FM-02`–`FM-04`),
 absolute cross-links (`LNK-01`), index entries carrying descriptions (`IDX-03`),
@@ -375,10 +375,10 @@ a conformant bundle must clear *all* nine MUST / MUST NOT rules.
 
 ```
 broken-bundle/
-├── log.md                # LOG-01 — non-ISO date heading
+├── _log.md                # LOG-01 — non-ISO date heading
 ├── metrics.md            # DOC-02 — no frontmatter block at all
 └── tables/
-    ├── index.md          # IDX-01 — a non-root index.md carrying frontmatter
+    ├── _index.md          # IDX-01 — a non-root _index.md carrying frontmatter
     ├── orders.md         # FM-01 — frontmatter has no `type`
     └── customers.md      # DOC-03 — frontmatter is a list, not a mapping
 ```
@@ -414,7 +414,7 @@ description: One row per completed customer order.
 One row per customer.
 ```
 
-`tables/index.md` — a non-root `index.md` carrying frontmatter (`IDX-01`):
+`tables/_index.md` — a non-root `_index.md` carrying frontmatter (`IDX-01`):
 
 ```markdown
 ---
@@ -427,7 +427,7 @@ title: Tables
 * [Orders](orders.md) - Customer orders.
 ```
 
-`log.md` — date heading is not ISO `YYYY-MM-DD` (`LOG-01`):
+`_log.md` — date heading is not ISO `YYYY-MM-DD` (`LOG-01`):
 
 ```markdown
 # Update Log
@@ -443,13 +443,13 @@ title: Tables
 | `metrics.md` | `DOC-02` | Body starts immediately — no `---` frontmatter block. | Add a frontmatter block containing at least `type`. |
 | `tables/orders.md` | `FM-01` | Frontmatter has no `type` key. | Add `type: <kind>` — any non-empty string. |
 | `tables/customers.md` | `DOC-03` | Frontmatter parses as a YAML list, not a mapping. | Use `key: value` pairs, including `type:`. |
-| `tables/index.md` | `IDX-01` | A non-root `index.md` carries frontmatter. | Remove the frontmatter — only the root `index.md` may have it, and only `okf_version`. |
-| `log.md` | `LOG-01` | Date heading `## May 28, 2026` is not ISO form. | Use `## 2026-05-28`. |
+| `tables/_index.md` | `IDX-01` | A non-root `_index.md` carries frontmatter. | Remove the frontmatter — only the root `_index.md` may have it, and only `okf_version`. |
+| `_log.md` | `LOG-01` | Date heading `## May 28, 2026` is not ISO form. | Use `## 2026-05-28`. |
 
 ### What would *not* make this bundle non-conformant
 
 Don't confuse these mistakes with the permitted latitude in §6. None of the
 following are violations: a broken cross-link, an unfamiliar `type` value (e.g.
 `type: Wibble`), a concept missing `title`/`description`/`tags`/`timestamp`, an
-extra unknown frontmatter key, or a directory with no `index.md` at all. Fixing
+extra unknown frontmatter key, or a directory with no `_index.md` at all. Fixing
 the five real violations above — and only those — makes the bundle conformant.

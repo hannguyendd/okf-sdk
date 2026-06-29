@@ -20,7 +20,7 @@ checks.
 **`packages/okf-mcp`** — a producer MCP server (official `mcp` SDK / FastMCP,
 plus `pydantic-settings`) for authoring bundles: tools to `add`, `patch`,
 `move`, `get`, and `list` concepts and `read_index` (progressive disclosure),
-re-indexing and appending a directory-scoped `log.md` entry after each write.
+re-indexing and appending a directory-scoped `_log.md` entry after each write.
 The bundle root comes from `OKF_BUNDLE_ROOT` (overridable per call). See
 `docs/superpowers/specs/2026-06-29-okf-mcp-producer-design.md` and
 `docs/superpowers/plans/2026-06-29-okf-mcp-producer.md`.

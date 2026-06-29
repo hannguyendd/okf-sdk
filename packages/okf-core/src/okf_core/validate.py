@@ -20,9 +20,9 @@ from typing import Any
 
 import yaml
 
+from okf_core.constants import INDEX_FILENAME, LOG_FILENAME
+
 _FRONTMATTER_DELIM = "---"
-_INDEX_NAME = "index.md"
-_LOG_NAME = "log.md"
 
 _HEADING_RE = re.compile(r"^#{1,6}[ \t]+\S", re.MULTILINE)
 _BULLET_RE = re.compile(r"^[ \t]*[-*+][ \t]+(.*)$", re.MULTILINE)
@@ -100,7 +100,7 @@ def _check_index(rel: str, text: str, is_root: bool) -> list[Violation]:
         if not is_root:
             out.append(
                 Violation(
-                    "IDX-01", rel, "non-root index.md must not carry frontmatter"
+                    "IDX-01", rel, f"non-root {INDEX_FILENAME} must not carry frontmatter"
                 )
             )
         else:
@@ -110,18 +110,18 @@ def _check_index(rel: str, text: str, is_root: bool) -> list[Violation]:
                     Violation(
                         "IDX-01",
                         rel,
-                        "root index.md frontmatter may declare only 'okf_version'",
+                        f"root {INDEX_FILENAME} frontmatter may declare only 'okf_version'",
                     )
                 )
     if not _HEADING_RE.search(text):
         out.append(
-            Violation("IDX-02", rel, "index.md has no section heading")
+            Violation("IDX-02", rel, f"{INDEX_FILENAME} has no section heading")
         )
     for bullet in _BULLET_RE.findall(text):
         if not _LINK_RE.search(bullet):
             out.append(
                 Violation(
-                    "IDX-02", rel, "index.md list entry is not a markdown link"
+                    "IDX-02", rel, f"{INDEX_FILENAME} list entry is not a markdown link"
                 )
             )
             break
@@ -133,7 +133,7 @@ def _check_log(rel: str, text: str) -> list[Violation]:
     lines = text.splitlines()
     if lines and lines[0].strip() == _FRONTMATTER_DELIM:
         out.append(
-            Violation("RSV-01", rel, "log.md must not be used as a concept (has frontmatter)")
+            Violation("RSV-01", rel, f"{LOG_FILENAME} must not be used as a concept (has frontmatter)")
         )
     for heading in _LEVEL2_HEADING_RE.findall(text):
         try:
@@ -143,7 +143,7 @@ def _check_log(rel: str, text: str) -> list[Violation]:
                 Violation(
                     "LOG-01",
                     rel,
-                    f"log.md date heading '{heading.strip()}' is not ISO YYYY-MM-DD",
+                    f"{LOG_FILENAME} date heading '{heading.strip()}' is not ISO YYYY-MM-DD",
                 )
             )
     return out
@@ -168,9 +168,9 @@ def validate_bundle(root: Path | str) -> list[Violation]:
                 Violation("DOC-01", rel, "file is not valid UTF-8")
             )
             continue
-        if md_path.name == _INDEX_NAME:
-            violations.extend(_check_index(rel, text, is_root=rel == _INDEX_NAME))
-        elif md_path.name == _LOG_NAME:
+        if md_path.name == INDEX_FILENAME:
+            violations.extend(_check_index(rel, text, is_root=rel == INDEX_FILENAME))
+        elif md_path.name == LOG_FILENAME:
             violations.extend(_check_log(rel, text))
         else:
             violations.extend(_check_concept(rel, text))

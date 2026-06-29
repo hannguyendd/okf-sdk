@@ -39,7 +39,7 @@ def add(
     `frontmatter` must include a non-empty `type`; recommended keys: `title`,
     `description`, `resource`, `tags`. `timestamp` is set automatically when
     omitted. Fails if the concept already exists. Regenerates indexes and
-    appends a Creation entry to the directory's `log.md`.
+    appends a Creation entry to the directory's `_log.md`.
     """
     return operations.add_concept(_root(bundle_root), concept_id, frontmatter, body)
 
@@ -56,7 +56,7 @@ def patch(
     Merges the given `frontmatter` keys (null values are ignored; keys are never
     deleted). Replaces the body only when `body` is provided. `timestamp` is
     refreshed unless you pass one. Fails if the concept does not exist.
-    Regenerates indexes and appends an Update entry to `log.md`.
+    Regenerates indexes and appends an Update entry to `_log.md`.
     """
     return operations.patch_concept(_root(bundle_root), concept_id, frontmatter, body)
 
@@ -83,7 +83,7 @@ def read_index(
     depth: int = 1,
     bundle_root: str | None = None,
 ) -> list[dict]:
-    """Read `index.md` files for progressive disclosure.
+    """Read `_index.md` files for progressive disclosure.
 
     `dir` is a bundle-relative directory (root if omitted). `depth` (1-3) sets
     how many directory levels of indexes to return, breadth-first.
@@ -104,7 +104,7 @@ def move(
     the destination already exists, or the two ids are equal. Rewrites markdown
     links so that inbound links from other concepts and the moved concept's own
     relative links stay valid, then regenerates indexes and appends a Move entry
-    to `log.md`.
+    to `_log.md`.
     """
     return operations.move_concept(
         _root(bundle_root), from_concept_id, to_concept_id
