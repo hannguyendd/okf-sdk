@@ -114,3 +114,54 @@ def test_add_writes_log_and_index(tmp_path):
     assert "Added [Orders](orders.md)" in log.read_text()
     assert (tmp_path / "tables" / "index.md").exists()
     assert (tmp_path / "index.md").exists()
+
+
+def test_patch_merges_only_given_keys(tmp_path):
+    operations.add_concept(
+        tmp_path, "a", {"type": "X", "title": "Old", "description": "keep"}, "body"
+    )
+    operations.patch_concept(tmp_path, "a", {"title": "New"})
+    doc = OKFDocument.parse((tmp_path / "a.md").read_text())
+    assert doc.frontmatter["title"] == "New"
+    assert doc.frontmatter["description"] == "keep"
+    assert doc.frontmatter["type"] == "X"
+
+
+def test_patch_ignores_none_values(tmp_path):
+    operations.add_concept(tmp_path, "a", {"type": "X", "title": "Old"}, "")
+    operations.patch_concept(tmp_path, "a", {"title": None})
+    doc = OKFDocument.parse((tmp_path / "a.md").read_text())
+    assert doc.frontmatter["title"] == "Old"
+
+
+def test_patch_replaces_body_only_when_given(tmp_path):
+    operations.add_concept(tmp_path, "a", {"type": "X"}, "original")
+    operations.patch_concept(tmp_path, "a", {"title": "T"})
+    assert OKFDocument.parse((tmp_path / "a.md").read_text()).body.strip() == "original"
+    operations.patch_concept(tmp_path, "a", body="replaced")
+    assert OKFDocument.parse((tmp_path / "a.md").read_text()).body.strip() == "replaced"
+
+
+def test_patch_refreshes_timestamp(tmp_path):
+    operations.add_concept(tmp_path, "a", {"type": "X", "timestamp": "2020-01-01T00:00:00Z"}, "")
+    operations.patch_concept(tmp_path, "a", {"title": "T"})
+    doc = OKFDocument.parse((tmp_path / "a.md").read_text())
+    assert doc.frontmatter["timestamp"] != "2020-01-01T00:00:00Z"
+
+
+def test_patch_keeps_caller_timestamp(tmp_path):
+    operations.add_concept(tmp_path, "a", {"type": "X"}, "")
+    operations.patch_concept(tmp_path, "a", {"timestamp": "2030-01-01T00:00:00Z"})
+    doc = OKFDocument.parse((tmp_path / "a.md").read_text())
+    assert doc.frontmatter["timestamp"] == "2030-01-01T00:00:00Z"
+
+
+def test_patch_missing_errors(tmp_path):
+    with pytest.raises(ValueError):
+        operations.patch_concept(tmp_path, "nope", {"title": "X"})
+
+
+def test_patch_logs_update(tmp_path):
+    operations.add_concept(tmp_path, "a", {"type": "X", "title": "A"}, "")
+    operations.patch_concept(tmp_path, "a", {"title": "A2"})
+    assert "Updated [A2](a.md)" in (tmp_path / "log.md").read_text()

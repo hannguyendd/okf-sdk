@@ -117,3 +117,33 @@ def add_concept(
     log_path = _append_log_for(path, label, "Creation", "Added")
     indexes = regenerate_indexes(bundle_root)
     return _summary(bundle_root, concept_id, path, "created", log_path, indexes)
+
+
+def patch_concept(
+    bundle_root: Path,
+    concept_id: str,
+    frontmatter: dict | None = None,
+    body: str | None = None,
+) -> dict:
+    """Update an existing concept (merge frontmatter, optional body), reindex, log."""
+    path = _concept_path(bundle_root, concept_id)
+    if not path.exists():
+        raise ValueError(f"concept not found: {concept_id}")
+    doc = OKFDocument.parse(path.read_text(encoding="utf-8"))
+    fm = dict(doc.frontmatter)
+    caller_ts = False
+    for key, value in (frontmatter or {}).items():
+        if value is not None:
+            fm[key] = value
+            if key == "timestamp":
+                caller_ts = True
+    new_body = doc.body if body is None else body
+    if not caller_ts:
+        fm["timestamp"] = _now_iso()
+    path.write_text(
+        OKFDocument(frontmatter=fm, body=new_body).serialize(), encoding="utf-8"
+    )
+    label = str(fm.get("title") or path.stem)
+    log_path = _append_log_for(path, label, "Update", "Updated")
+    indexes = regenerate_indexes(bundle_root)
+    return _summary(bundle_root, concept_id, path, "updated", log_path, indexes)
