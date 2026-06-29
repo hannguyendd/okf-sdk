@@ -91,6 +91,26 @@ def read_index(
     return operations.read_index(_root(bundle_root), dir, depth)
 
 
+@mcp.tool()
+def move(
+    from_concept_id: str,
+    to_concept_id: str,
+    bundle_root: str | None = None,
+) -> dict:
+    """Move (rename or relocate) an OKF concept to a new id.
+
+    `from_concept_id`/`to_concept_id` are bundle-relative paths without `.md`
+    (e.g. `tables/orders` -> `models/orders`). Fails if the source is missing,
+    the destination already exists, or the two ids are equal. Rewrites markdown
+    links so that inbound links from other concepts and the moved concept's own
+    relative links stay valid, then regenerates indexes and appends a Move entry
+    to `log.md`.
+    """
+    return operations.move_concept(
+        _root(bundle_root), from_concept_id, to_concept_id
+    )
+
+
 def main() -> None:
     mcp.run()
 
