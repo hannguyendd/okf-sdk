@@ -202,3 +202,40 @@ def test_list_filters_by_prefix(tmp_path):
     operations.add_concept(tmp_path, "metrics/mau", {"type": "Metric"}, "")
     res = operations.list_concepts(tmp_path, prefix="tables/")
     assert [c["id"] for c in res] == ["tables/orders"]
+
+
+def test_read_index_depth_one(tmp_path):
+    operations.add_concept(tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, "")
+    res = operations.read_index(tmp_path)
+    assert len(res) == 1
+    assert res[0]["dir"] == ""
+    assert res[0]["path"] == "index.md"
+    assert "tables" in res[0]["content"]
+
+
+def test_read_index_depth_two_descends(tmp_path):
+    operations.add_concept(tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, "")
+    res = operations.read_index(tmp_path, depth=2)
+    dirs = {r["dir"] for r in res}
+    assert "" in dirs and "tables" in dirs
+
+
+def test_read_index_specific_dir(tmp_path):
+    operations.add_concept(tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, "")
+    res = operations.read_index(tmp_path, dir="tables")
+    assert res[0]["dir"] == "tables"
+    assert "Orders" in res[0]["content"]
+
+
+def test_read_index_bad_depth(tmp_path):
+    with pytest.raises(ValueError):
+        operations.read_index(tmp_path, depth=4)
+
+
+def test_read_index_rejects_escape(tmp_path):
+    with pytest.raises(ValueError):
+        operations.read_index(tmp_path, dir="../outside")
+
+
+def test_read_index_missing_is_empty(tmp_path):
+    assert operations.read_index(tmp_path) == []

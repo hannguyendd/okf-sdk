@@ -190,3 +190,45 @@ def list_concepts(
             }
         )
     return out
+
+
+def _rel_dir(bundle_root: Path, directory: Path) -> str:
+    if directory == bundle_root:
+        return ""
+    return directory.relative_to(bundle_root).as_posix()
+
+
+def read_index(
+    bundle_root: Path, dir: str | None = None, depth: int = 1
+) -> list[dict]:
+    """Return ``index.md`` files for progressive disclosure, breadth-first.
+
+    Starts at ``dir`` (bundle root if omitted) and descends ``depth`` levels
+    (1..3). Missing ``index.md`` files are skipped; read-only.
+    """
+    if not isinstance(depth, int) or isinstance(depth, bool) or not 1 <= depth <= 3:
+        raise ValueError("depth must be an integer in 1..3")
+    root = bundle_root.resolve()
+    start = root if not dir else (root / dir).resolve()
+    if start != root and root not in start.parents:
+        raise ValueError(f"dir escapes the bundle root: {dir}")
+    results: list[dict] = []
+    level = [start]
+    for _ in range(depth):
+        nxt: list[Path] = []
+        for d in level:
+            index_file = d / "index.md"
+            if index_file.is_file():
+                results.append(
+                    {
+                        "dir": _rel_dir(root, d),
+                        "path": index_file.relative_to(root).as_posix(),
+                        "content": index_file.read_text(encoding="utf-8"),
+                    }
+                )
+            if d.is_dir():
+                nxt.extend(sorted(p for p in d.iterdir() if p.is_dir()))
+        level = nxt
+        if not level:
+            break
+    return results
