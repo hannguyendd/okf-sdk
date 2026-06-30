@@ -74,3 +74,38 @@ def rewrite_links(
         return f"]({new_target}{anchor})"
 
     return _LINK_RE.sub(_sub, body)
+
+
+# Mirrors _LINK_RE but also captures the [label] so the whole link can be
+# replaced by its label. Keep the target/anchor groups in sync with _LINK_RE.
+_FULL_LINK_RE = re.compile(
+    r"\[(?P<label>[^\]]*)\]\((?P<target>[^)\s]+\.md)(?P<anchor>#[A-Za-z0-9_\-]*)?\)"
+)
+
+
+def strip_links(
+    body: str,
+    doc_dir: Path,
+    bundle_root: Path,
+    target_ids: set[str],
+) -> str:
+    """Remove markdown links pointing at any id in ``target_ids``, keeping text.
+
+    Resolves each ``[label](target.md)`` link in ``body`` (against ``doc_dir``
+    and ``bundle_root``, using the same rules as ``extract_links`` /
+    ``rewrite_links``). When the resolved target concept id is in
+    ``target_ids``, the entire link -- brackets, target, and any ``#anchor`` --
+    is replaced by its bare ``label`` text. External (``scheme://``) and
+    out-of-bundle links, and links whose target is not in ``target_ids``, are
+    left untouched. Returns an equal body when nothing applies.
+    """
+    bundle_root = bundle_root.resolve()
+    doc_dir = doc_dir.resolve()
+
+    def _sub(m: re.Match[str]) -> str:
+        target_id = _resolve_target_id(m.group("target"), doc_dir, bundle_root)
+        if target_id is None or target_id not in target_ids:
+            return m.group(0)
+        return m.group("label")
+
+    return _FULL_LINK_RE.sub(_sub, body)
