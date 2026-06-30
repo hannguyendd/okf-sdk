@@ -10,15 +10,20 @@ def _stub_synth(rel: str, children: list[tuple[str, str]]) -> str:
     return f"stub: {len(children)} items"
 
 
-def _write_doc(path: Path, type_: str, title: str, description: str) -> None:
+def _write_doc(
+    path: Path, type_: str, title: str, description: str, *, tags=None
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    fm = {
+        "type": type_,
+        "title": title,
+        "description": description,
+        "timestamp": "2026-05-27T00:00:00+00:00",
+    }
+    if tags is not None:
+        fm["tags"] = tags
     doc = OKFDocument(
-        frontmatter={
-            "type": type_,
-            "title": title,
-            "description": description,
-            "timestamp": "2026-05-27T00:00:00+00:00",
-        },
+        frontmatter=fm,
         body=f"# {title}\n\n{description}\n",
     )
     path.write_text(doc.serialize(), encoding="utf-8")
@@ -123,6 +128,62 @@ def test_regenerate_excludes_log_file(tmp_path: Path):
     tables_index = (root / "tables" / "_index.md").read_text(encoding="utf-8")
     assert "_log" not in tables_index
     assert "(_log.md)" not in tables_index
+
+
+def test_regenerate_appends_tags_suffix(tmp_path: Path):
+    root = tmp_path / "bundle"
+    _write_doc(
+        root / "tables" / "orders.md",
+        "BigQuery Table",
+        "Orders",
+        "Daily order facts.",
+        tags=["billing", "daily"],
+    )
+
+    regenerate_indexes(root, synthesize=_stub_synth)
+
+    tables_index = (root / "tables" / "_index.md").read_text(encoding="utf-8")
+    assert "* [Orders](orders.md) - Daily order facts. _(tags: billing, daily)_" in tables_index
+
+
+def test_regenerate_omits_tags_suffix_when_absent(tmp_path: Path):
+    root = tmp_path / "bundle"
+    _write_doc(root / "tables" / "users.md", "BigQuery Table", "users", "Per-user dim.")
+
+    regenerate_indexes(root, synthesize=_stub_synth)
+
+    tables_index = (root / "tables" / "_index.md").read_text(encoding="utf-8")
+    assert "_(tags:" not in tables_index
+    assert "* [users](users.md) - Per-user dim." in tables_index
+
+
+def test_regenerate_tags_suffix_without_description(tmp_path: Path):
+    root = tmp_path / "bundle"
+    _write_doc(
+        root / "tables" / "orders.md", "BigQuery Table", "Orders", "", tags=["billing"]
+    )
+
+    regenerate_indexes(root, synthesize=_stub_synth)
+
+    tables_index = (root / "tables" / "_index.md").read_text(encoding="utf-8")
+    assert "* [Orders](orders.md) _(tags: billing)_" in tables_index
+    assert "orders.md) - _(tags" not in tables_index  # no stray " - "
+
+
+def test_regenerate_normalizes_non_list_tags(tmp_path: Path):
+    root = tmp_path / "bundle"
+    _write_doc(
+        root / "tables" / "orders.md",
+        "BigQuery Table",
+        "Orders",
+        "Daily order facts.",
+        tags="billing",
+    )
+
+    regenerate_indexes(root, synthesize=_stub_synth)
+
+    tables_index = (root / "tables" / "_index.md").read_text(encoding="utf-8")
+    assert "_(tags: billing)_" in tables_index
 
 
 def test_regenerate_nonexistent_root_returns_empty(tmp_path: Path):
