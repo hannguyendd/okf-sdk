@@ -1,7 +1,7 @@
 """Producer operations over an OKF bundle (framework-agnostic)."""
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 from okf_core import (
@@ -42,17 +42,20 @@ def _concept_path(bundle_root: Path, concept_id: str) -> Path:
     return concept_id_to_path(bundle_root, parts)
 
 
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc).replace(microsecond=0)
+
+
 def _now_iso() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return _now_utc().isoformat().replace("+00:00", "Z")
 
 
-def _today_iso() -> str:
-    return date.today().isoformat()
+def _utc_date(dt: datetime) -> str:
+    return dt.date().isoformat()
+
+
+def _utc_time(dt: datetime) -> str:
+    return dt.strftime("%H:%M:%S") + "Z"
 
 
 def _append_log(log_path: Path, entry: str, today: str) -> None:
@@ -79,8 +82,12 @@ def _append_log(log_path: Path, entry: str, today: str) -> None:
 
 def _append_log_for(concept_path: Path, label: str, action: str, verb: str) -> Path:
     log_path = concept_path.parent / LOG_FILENAME
-    entry = f"* **{action}**: {verb} [{label}]({concept_path.name})."
-    _append_log(log_path, entry, _today_iso())
+    dt = _now_utc()
+    entry = (
+        f"* **{_utc_time(dt)}** **{action}**: "
+        f"{verb} [{label}]({concept_path.name})."
+    )
+    _append_log(log_path, entry, _utc_date(dt))
     return log_path
 
 
@@ -259,20 +266,21 @@ def _log_move(
     """Append Move entries: an arrival in the dest dir log, and (when the source
     directory differs) a departure in the source dir log. Returns the logs."""
     label = str(frontmatter.get("title") or to_path.stem)
-    today = _today_iso()
+    dt = _now_utc()
+    date_group, time = _utc_date(dt), _utc_time(dt)
     dest_log = to_path.parent / LOG_FILENAME
     _append_log(
         dest_log,
-        f"* **Move**: Moved [{label}]({to_path.name}) from `{from_id}`.",
-        today,
+        f"* **{time}** **Move**: Moved [{label}]({to_path.name}) from `{from_id}`.",
+        date_group,
     )
     logs = [dest_log]
     if from_path.parent != to_path.parent:
         src_log = from_path.parent / LOG_FILENAME
         _append_log(
             src_log,
-            f"* **Move**: Moved [{label}]({from_path.name}) to `{to_id}`.",
-            today,
+            f"* **{time}** **Move**: Moved [{label}]({from_path.name}) to `{to_id}`.",
+            date_group,
         )
         logs.append(src_log)
     return logs
@@ -360,7 +368,10 @@ def _append_log_deletion(concept_path: Path, label: str) -> Path:
     a link entry would itself be a dangling link.
     """
     log_path = concept_path.parent / LOG_FILENAME
-    _append_log(log_path, f"* **Deletion**: Removed `{label}`.", _today_iso())
+    dt = _now_utc()
+    _append_log(
+        log_path, f"* **{_utc_time(dt)}** **Deletion**: Removed `{label}`.", _utc_date(dt)
+    )
     return log_path
 
 
