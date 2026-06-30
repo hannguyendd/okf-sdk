@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from okf_core import OKFDocument
 
@@ -473,7 +475,7 @@ def test_delete_logs_deletion_entry(tmp_path):
     operations.add_concept(tmp_path, "tables/customers", {"type": "Table"}, "")
     res = operations.delete_concept(tmp_path, "tables/orders")
     log = (tmp_path / "tables" / "_log.md").read_text()
-    assert "* **Deletion**: Removed `Orders`." in log
+    assert "**Deletion**: Removed `Orders`." in log
     assert "Removed [" not in log  # backticked label, not a markdown link
     assert res["log"] == "tables/_log.md"
 
@@ -543,3 +545,74 @@ def test_reindex_returns_relative_posix_paths(tmp_path):
     _write_concept(tmp_path / "tables" / "orders.md", "Table", "Orders")
     res = operations.reindex_bundle(tmp_path)
     assert all(not p.startswith("/") for p in res["indexes"])
+
+
+def test_add_log_entry_has_time_prefix(tmp_path):
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
+    log = (tmp_path / "tables" / "_log.md").read_text()
+    assert re.search(r"^\* \*\*\d{2}:\d{2}:\d{2}Z\*\* \*\*Creation\*\*:", log, re.M)
+
+
+def test_patch_log_entry_has_time_prefix(tmp_path):
+    operations.add_concept(tmp_path, "a", {"type": "X"}, "")
+    operations.patch_concept(tmp_path, "a", {"title": "A2"})
+    log = (tmp_path / "_log.md").read_text()
+    assert re.search(r"^\* \*\*\d{2}:\d{2}:\d{2}Z\*\* \*\*Update\*\*:", log, re.M)
+
+
+def test_move_log_entries_have_time_prefix(tmp_path):
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
+    operations.move_concept(tmp_path, "tables/orders", "models/orders")
+    dest = (tmp_path / "models" / "_log.md").read_text()
+    src = (tmp_path / "tables" / "_log.md").read_text()
+    pat = r"^\* \*\*\d{2}:\d{2}:\d{2}Z\*\* \*\*Move\*\*:"
+    assert re.search(pat, dest, re.M)
+    assert re.search(pat, src, re.M)
+
+
+def test_delete_log_entry_has_time_prefix(tmp_path):
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
+    operations.add_concept(tmp_path, "tables/customers", {"type": "Table"}, "")
+    operations.delete_concept(tmp_path, "tables/orders")
+    log = (tmp_path / "tables" / "_log.md").read_text()
+    assert re.search(r"^\* \*\*\d{2}:\d{2}:\d{2}Z\*\* \*\*Deletion\*\*:", log, re.M)
+
+
+def test_log_heading_and_time_are_utc(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+
+    fixed = datetime(2026, 6, 30, 23, 59, 59, tzinfo=timezone.utc)
+    monkeypatch.setattr(operations, "_now_utc", lambda: fixed)
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
+    log = (tmp_path / "tables" / "_log.md").read_text()
+    assert "## 2026-06-30" in log
+    assert "* **23:59:59Z** **Creation**: Added [Orders](orders.md)." in log
+
+
+def test_move_entries_share_one_instant(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
+    times = iter(
+        [
+            datetime(2026, 6, 30, 1, 0, 0, tzinfo=timezone.utc),
+            datetime(2026, 6, 30, 2, 0, 0, tzinfo=timezone.utc),
+        ]
+    )
+    monkeypatch.setattr(operations, "_now_utc", lambda: next(times))
+    operations.move_concept(tmp_path, "tables/orders", "models/orders")
+    dest = (tmp_path / "models" / "_log.md").read_text()
+    src = (tmp_path / "tables" / "_log.md").read_text()
+    # _log_move computes _now_utc() once and reuses it for both entries.
+    assert "**01:00:00Z**" in dest
+    assert "**01:00:00Z**" in src
