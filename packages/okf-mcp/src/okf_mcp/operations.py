@@ -153,6 +153,21 @@ def patch_concept(
     return _summary(bundle_root, concept_id, path, "updated", log_path, indexes)
 
 
+def reindex_bundle(bundle_root: Path) -> dict:
+    """Regenerate every ``_index.md`` in the bundle from current content.
+
+    Repairs indexes that have drifted (e.g. files edited outside the producer
+    tools). This is index maintenance, not a concept change, so it does not
+    touch ``_log.md``. Returns the regenerated index paths and their count.
+    """
+    indexes = regenerate_indexes(bundle_root)
+    return {
+        "action": "reindexed",
+        "indexes": [Path(p).relative_to(bundle_root).as_posix() for p in indexes],
+        "count": len(indexes),
+    }
+
+
 def get_concept(bundle_root: Path, concept_id: str) -> dict:
     """Read one concept: frontmatter, body, and resolved outgoing links."""
     path = _concept_path(bundle_root, concept_id)

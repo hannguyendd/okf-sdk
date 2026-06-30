@@ -401,3 +401,52 @@ def test_move_inbound_preserves_frontmatter(tmp_path):
     operations.move_concept(tmp_path, "tables/orders", "models/orders")
     cust = OKFDocument.parse((tmp_path / "tables" / "customers.md").read_text())
     assert cust.frontmatter["timestamp"] == "2020-01-01T00:00:00Z"
+
+
+def _write_concept(path, type_, title):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc = OKFDocument(
+        frontmatter={"type": type_, "title": title, "timestamp": "2026-06-30T00:00:00Z"},
+        body=f"# {title}\n",
+    )
+    path.write_text(doc.serialize(), encoding="utf-8")
+
+
+def test_reindex_regenerates_missing_indexes(tmp_path):
+    _write_concept(tmp_path / "tables" / "orders.md", "Table", "Orders")
+    _write_concept(tmp_path / "tables" / "customers.md", "Table", "Customers")
+    assert not (tmp_path / "tables" / "_index.md").exists()
+
+    res = operations.reindex_bundle(tmp_path)
+
+    assert res["action"] == "reindexed"
+    assert res["count"] == len(res["indexes"])
+    assert "tables/_index.md" in res["indexes"]
+    assert "_index.md" in res["indexes"]
+    tables_index = (tmp_path / "tables" / "_index.md").read_text()
+    assert "[Orders](orders.md)" in tables_index
+    assert "[Customers](customers.md)" in tables_index
+
+
+def test_reindex_repairs_stale_log_entry(tmp_path):
+    _write_concept(tmp_path / "tables" / "orders.md", "Table", "Orders")
+    (tmp_path / "tables" / "_log.md").write_text(
+        "# Update Log\n\n## 2026-06-30\n* **Creation**: Added [Orders](orders.md).\n",
+        encoding="utf-8",
+    )
+    # A stale index left behind by the old bug, listing _log.md as a concept.
+    (tmp_path / "tables" / "_index.md").write_text(
+        "# Other\n\n* [_log](_log.md)\n", encoding="utf-8"
+    )
+
+    operations.reindex_bundle(tmp_path)
+
+    tables_index = (tmp_path / "tables" / "_index.md").read_text()
+    assert "_log" not in tables_index
+    assert "[Orders](orders.md)" in tables_index
+
+
+def test_reindex_returns_relative_posix_paths(tmp_path):
+    _write_concept(tmp_path / "tables" / "orders.md", "Table", "Orders")
+    res = operations.reindex_bundle(tmp_path)
+    assert all(not p.startswith("/") for p in res["indexes"])

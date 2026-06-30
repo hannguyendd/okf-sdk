@@ -111,6 +111,18 @@ def move(
     )
 
 
+@mcp.tool()
+def reindex(bundle_root: str | None = None) -> dict:
+    """Regenerate every `_index.md` in the bundle from current content.
+
+    Use this to repair indexes that have drifted -- for example after editing
+    concept files directly instead of through `add`/`patch`/`move`. Rewrites all
+    directory `_index.md` files; does not touch `_log.md`. Returns the
+    regenerated index paths (bundle-relative) and their count.
+    """
+    return operations.reindex_bundle(_root(bundle_root))
+
+
 def main() -> None:
     mcp.run()
 
