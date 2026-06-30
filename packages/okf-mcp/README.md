@@ -51,7 +51,7 @@ claude mcp add okf-producer \
 ```
 
 `claude mcp list` should report `okf-producer: ✓ connected`, and `/mcp` lists the
-five tools. This is equivalent to a project `.mcp.json`:
+tools. This is equivalent to a project `.mcp.json`:
 
 ```json
 {
@@ -83,7 +83,7 @@ printf '%s\n' \
 ```
 
 Expect an `initialize` result naming `okf-producer`, then a `tools/list` with
-`add, patch, get, list, read_index, move, reindex`. Or explore interactively with the
+`add, patch, get, list, read_index, move, reindex, delete`. Or explore interactively with the
 [MCP Inspector](https://github.com/modelcontextprotocol/inspector):
 
 ```bash
@@ -103,11 +103,12 @@ traffic — tools return values rather than printing.
 - `list(type?, prefix?, bundle_root?)` — enumerate concepts, optionally filtered.
 - `read_index(dir?, depth=1, bundle_root?)` — read `_index.md` files for progressive disclosure (depth 1-3).
 - `move(from_concept_id, to_concept_id, bundle_root?)` — relocate/rename a concept; rewrites inbound and own links, regenerates indexes, logs a Move entry (fails if source missing, destination exists, or ids equal).
+- `delete(concept_id, force=False, bundle_root?)` — delete a concept; safe by default (returns `action="blocked"` with `referenced_by` when other concepts link to it). `force=True` deletes anyway, unlinking inbound references (`[label](target.md)` → `label`), then regenerates indexes and logs a Deletion entry. Irreversible; fails if the concept does not exist.
 - `reindex(bundle_root?)` — regenerate every `_index.md` from current content to repair drift (e.g. files edited outside these tools); does not touch `_log.md`.
 
-Every write tool (`add`/`patch`/`move`) regenerates indexes and appends a dated
-entry to the relevant directory `_log.md`. `add`/`patch` manage the `timestamp`
-frontmatter automatically; `move` preserves it. `reindex` only regenerates
+Every write tool (`add`/`patch`/`move`/`delete`) regenerates indexes and appends
+a dated entry to the relevant directory `_log.md`. `add`/`patch` manage the
+`timestamp` frontmatter automatically; `move` preserves it. `reindex` only regenerates
 indexes — it is index maintenance, not a concept change, so it writes no log entry.
 
 ## Development
