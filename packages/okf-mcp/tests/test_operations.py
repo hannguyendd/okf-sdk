@@ -403,6 +403,99 @@ def test_move_inbound_preserves_frontmatter(tmp_path):
     assert cust.frontmatter["timestamp"] == "2020-01-01T00:00:00Z"
 
 
+def test_delete_unreferenced_removes_file_and_index(tmp_path):
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
+    operations.add_concept(
+        tmp_path, "tables/customers", {"type": "Table", "title": "Customers"}, ""
+    )
+    res = operations.delete_concept(tmp_path, "tables/orders")
+    assert not (tmp_path / "tables" / "orders.md").exists()
+    assert res["action"] == "deleted"
+    assert res["concept_id"] == "tables/orders"
+    assert res["unlinked"] == []
+    idx = (tmp_path / "tables" / "_index.md").read_text()
+    assert "Customers" in idx
+    assert "orders.md" not in idx
+
+
+def test_delete_blocked_when_referenced(tmp_path):
+    operations.add_concept(tmp_path, "tables/orders", {"type": "Table"}, "")
+    operations.add_concept(
+        tmp_path, "tables/customers", {"type": "Table"}, "see [O](orders.md)"
+    )
+    res = operations.delete_concept(tmp_path, "tables/orders")
+    assert res["action"] == "blocked"
+    assert res["referenced_by"] == ["tables/customers"]
+    assert (tmp_path / "tables" / "orders.md").exists()
+    cust = OKFDocument.parse((tmp_path / "tables" / "customers.md").read_text())
+    assert "(orders.md)" in cust.body  # untouched
+
+
+def test_delete_force_unlinks_relative_reference(tmp_path):
+    operations.add_concept(tmp_path, "tables/orders", {"type": "Table"}, "")
+    operations.add_concept(
+        tmp_path, "tables/customers", {"type": "Table"}, "see [O](orders.md) now"
+    )
+    res = operations.delete_concept(tmp_path, "tables/orders", force=True)
+    assert not (tmp_path / "tables" / "orders.md").exists()
+    assert res["unlinked"] == ["tables/customers"]
+    cust = OKFDocument.parse((tmp_path / "tables" / "customers.md").read_text())
+    assert "see O now" in cust.body
+    assert "(orders.md)" not in cust.body
+
+
+def test_delete_force_unlinks_absolute_reference(tmp_path):
+    operations.add_concept(tmp_path, "tables/orders", {"type": "Table"}, "")
+    operations.add_concept(
+        tmp_path, "metrics/rev", {"type": "Metric"}, "[O](/tables/orders.md)"
+    )
+    operations.delete_concept(tmp_path, "tables/orders", force=True)
+    rev = OKFDocument.parse((tmp_path / "metrics" / "rev.md").read_text())
+    assert rev.body.strip() == "O"
+
+
+def test_delete_force_unlinks_anchored_reference(tmp_path):
+    operations.add_concept(tmp_path, "tables/orders", {"type": "Table"}, "")
+    operations.add_concept(
+        tmp_path, "tables/customers", {"type": "Table"}, "[O](orders.md#schema)"
+    )
+    operations.delete_concept(tmp_path, "tables/orders", force=True)
+    cust = OKFDocument.parse((tmp_path / "tables" / "customers.md").read_text())
+    assert cust.body.strip() == "O"
+
+
+def test_delete_logs_deletion_entry(tmp_path):
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
+    operations.add_concept(tmp_path, "tables/customers", {"type": "Table"}, "")
+    res = operations.delete_concept(tmp_path, "tables/orders")
+    log = (tmp_path / "tables" / "_log.md").read_text()
+    assert "* **Deletion**: Removed `Orders`." in log
+    assert "Removed [" not in log  # backticked label, not a markdown link
+    assert res["log"] == "tables/_log.md"
+
+
+def test_delete_force_unreferenced_behaves_like_default(tmp_path):
+    operations.add_concept(tmp_path, "tables/orders", {"type": "Table"}, "")
+    operations.add_concept(tmp_path, "tables/customers", {"type": "Table"}, "")
+    res = operations.delete_concept(tmp_path, "tables/orders", force=True)
+    assert res["action"] == "deleted"
+    assert res["unlinked"] == []
+
+
+def test_delete_missing_errors(tmp_path):
+    with pytest.raises(ValueError):
+        operations.delete_concept(tmp_path, "nope")
+
+
+def test_delete_rejects_reserved(tmp_path):
+    with pytest.raises(ValueError):
+        operations.delete_concept(tmp_path, "tables/_index")
+
+
 def _write_concept(path, type_, title):
     path.parent.mkdir(parents=True, exist_ok=True)
     doc = OKFDocument(

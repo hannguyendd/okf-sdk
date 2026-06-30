@@ -112,6 +112,24 @@ def move(
 
 
 @mcp.tool()
+def delete(
+    concept_id: str,
+    force: bool = False,
+    bundle_root: str | None = None,
+) -> dict:
+    """Delete an OKF concept document.
+
+    Safe by default: if other concepts reference `concept_id`, deletes nothing
+    and returns `action="blocked"` with `referenced_by` listing them. Pass
+    `force=True` to delete anyway -- this unlinks every inbound reference
+    (`[label](target.md)` becomes plain `label`), removes the file, regenerates
+    indexes, and appends a Deletion entry to `_log.md`. Irreversible. Fails if
+    the concept does not exist.
+    """
+    return operations.delete_concept(_root(bundle_root), concept_id, force)
+
+
+@mcp.tool()
 def reindex(bundle_root: str | None = None) -> dict:
     """Regenerate every `_index.md` in the bundle from current content.
 

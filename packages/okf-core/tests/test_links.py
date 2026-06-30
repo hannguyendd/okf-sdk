@@ -1,4 +1,4 @@
-from okf_core import rewrite_links
+from okf_core import rewrite_links, strip_links
 
 
 def test_inbound_relative_same_dir_repointed(tmp_path):
@@ -89,3 +89,56 @@ def test_moved_doc_absolute_links_unchanged(tmp_path):
 def test_noop_returns_equal_body(tmp_path):
     body = "no md links [text](http://x) here"
     assert rewrite_links(body, tmp_path, tmp_path, tmp_path, {}) == body
+
+
+def test_strip_relative_link_keeps_label(tmp_path):
+    out = strip_links("see [Orders](orders.md) now", tmp_path, tmp_path, {"orders"})
+    assert out == "see Orders now"
+
+
+def test_strip_absolute_link_keeps_label(tmp_path):
+    out = strip_links(
+        "[Orders](/tables/orders.md)", tmp_path, tmp_path, {"tables/orders"}
+    )
+    assert out == "Orders"
+
+
+def test_strip_drops_anchor(tmp_path):
+    out = strip_links("[Orders](orders.md#schema)", tmp_path, tmp_path, {"orders"})
+    assert out == "Orders"
+
+
+def test_strip_only_targets_in_set(tmp_path):
+    body = "[O](orders.md) and [C](customers.md)"
+    out = strip_links(body, tmp_path, tmp_path, {"orders"})
+    assert out == "O and [C](customers.md)"
+
+
+def test_strip_id_not_in_set_untouched(tmp_path):
+    body = "[C](customers.md)"
+    assert strip_links(body, tmp_path, tmp_path, {"orders"}) == body
+
+
+def test_strip_external_and_out_of_bundle_untouched(tmp_path):
+    body = "[x](https://e.com/page.md) [y](../outside.md)"
+    assert strip_links(body, tmp_path, tmp_path, {"orders"}) == body
+
+
+def test_strip_multiple_occurrences(tmp_path):
+    body = "[O](orders.md) ... [Orders again](orders.md#x)"
+    out = strip_links(body, tmp_path, tmp_path, {"orders"})
+    assert out == "O ... Orders again"
+
+
+def test_strip_from_subdir_resolves_parent_target(tmp_path):
+    metrics = tmp_path / "metrics"
+    metrics.mkdir()
+    out = strip_links(
+        "[o](../tables/orders.md)", metrics, tmp_path, {"tables/orders"}
+    )
+    assert out == "o"
+
+
+def test_strip_noop_returns_equal_body(tmp_path):
+    body = "no md links [text](http://x) here"
+    assert strip_links(body, tmp_path, tmp_path, {"orders"}) == body

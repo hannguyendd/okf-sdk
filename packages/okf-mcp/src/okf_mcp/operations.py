@@ -15,6 +15,7 @@ from okf_core import (
     parse_concept_id,
     regenerate_indexes,
     rewrite_links,
+    strip_links,
 )
 
 
@@ -348,5 +349,74 @@ def move_concept(
         "action": "moved",
         "relinked": relinked,
         "logs": [Path(p).relative_to(bundle_root).as_posix() for p in logs],
+        "indexes": [Path(p).relative_to(bundle_root).as_posix() for p in indexes],
+    }
+
+
+def _append_log_deletion(concept_path: Path, label: str) -> Path:
+    """Append a Deletion entry to the directory's log.
+
+    The label is backticked (not a markdown link) because the file is gone --
+    a link entry would itself be a dangling link.
+    """
+    log_path = concept_path.parent / LOG_FILENAME
+    _append_log(log_path, f"* **Deletion**: Removed `{label}`.", _today_iso())
+    return log_path
+
+
+def delete_concept(
+    bundle_root: Path, concept_id: str, force: bool = False
+) -> dict:
+    """Delete a concept; safe by default, ``force`` unlinks inbound references.
+
+    Collects every other concept whose body links to ``concept_id``. When such
+    referrers exist and ``force`` is false, deletes nothing and returns the
+    referrers (``action="blocked"``). Otherwise unlinks each inbound reference
+    (``[label](target.md)`` -> ``label``), removes the file, appends a Deletion
+    entry to the directory ``_log.md``, regenerates indexes, and returns a
+    summary (``action="deleted"``). Fails if the concept does not exist or the
+    id collides with a reserved file name.
+    """
+    path = _concept_path(bundle_root, concept_id)
+    if not path.exists():
+        raise ValueError(f"concept not found: {concept_id}")
+    deleted_id = "/".join(parse_concept_id(concept_id))
+    doc = OKFDocument.parse(path.read_text(encoding="utf-8"))
+    label = str(doc.frontmatter.get("title") or path.stem)
+
+    # One pass: find every other concept whose body links to the deleted id.
+    referrers: list[tuple[str, Path, dict, str]] = []  # (id, path, fm, new_body)
+    for c in Bundle.load(bundle_root).concepts:
+        if c.id == deleted_id:
+            continue
+        c_path = concept_id_to_path(bundle_root, parse_concept_id(c.id))
+        new_body = strip_links(c.body, c_path.parent, bundle_root, {deleted_id})
+        if new_body != c.body:
+            referrers.append((c.id, c_path, c.document.frontmatter, new_body))
+
+    if referrers and not force:
+        return {
+            "concept_id": deleted_id,
+            "action": "blocked",
+            "referenced_by": sorted(rid for rid, _, _, _ in referrers),
+        }
+
+    unlinked: list[str] = []
+    for rid, c_path, fm, new_body in referrers:
+        c_path.write_text(
+            OKFDocument(frontmatter=fm, body=new_body).serialize(),
+            encoding="utf-8",
+        )
+        unlinked.append(rid)
+
+    path.unlink()
+    log_path = _append_log_deletion(path, label)
+    indexes = regenerate_indexes(bundle_root)
+    return {
+        "concept_id": deleted_id,
+        "path": path.relative_to(bundle_root).as_posix(),
+        "action": "deleted",
+        "unlinked": sorted(unlinked),
+        "log": log_path.relative_to(bundle_root).as_posix(),
         "indexes": [Path(p).relative_to(bundle_root).as_posix() for p in indexes],
     }

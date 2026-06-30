@@ -16,7 +16,7 @@ from okf_core.document import (
     OKFDocumentError,
 )
 from okf_core.index import regenerate_indexes
-from okf_core.links import rewrite_links
+from okf_core.links import rewrite_links, strip_links
 from okf_core.paths import (
     concept_id_to_path,
     parse_concept_id,
@@ -31,6 +31,7 @@ __all__ = [
     "Concept",
     "extract_links",
     "rewrite_links",
+    "strip_links",
     "OKFDocument",
     "OKFDocumentError",
     "REQUIRED_FRONTMATTER_KEYS",
