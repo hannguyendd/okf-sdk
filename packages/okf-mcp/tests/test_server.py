@@ -5,7 +5,9 @@ from okf_mcp.server import Settings, mcp
 
 def test_all_tools_registered():
     names = {t.name for t in asyncio.run(mcp.list_tools())}
-    assert {"add", "patch", "get", "list", "read_index", "move", "reindex"} <= names
+    assert {
+        "add", "patch", "get", "list", "read_index", "move", "reindex", "delete"
+    } <= names
 
 
 def test_settings_reads_dotenv(tmp_path, monkeypatch):
