@@ -4,7 +4,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Callable
 
-from okf_core.constants import INDEX_FILENAME
+from okf_core.constants import INDEX_FILENAME, RESERVED_FILENAMES
 from okf_core.document import OKFDocument
 from okf_core.synthesizer import fallback_synthesizer
 
@@ -67,7 +67,7 @@ def regenerate_indexes(
         entries: list[tuple[str, str, str, str]] = []
 
         for child in sorted(directory.iterdir()):
-            if child.name == INDEX_FILENAME:
+            if child.name in RESERVED_FILENAMES:
                 continue
             if child.is_file() and child.suffix == ".md":
                 doc = _load_doc(child)

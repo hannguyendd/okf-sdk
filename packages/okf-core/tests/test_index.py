@@ -105,5 +105,25 @@ def test_default_fallback_synthesizer_summarizes_multi_child_dir(tmp_path: Path)
     assert "(tables/_index.md) - Contains 2 entries: Alpha, Beta." in root_index
 
 
+def test_regenerate_excludes_log_file(tmp_path: Path):
+    root = tmp_path / "bundle"
+    _write_doc(
+        root / "tables" / "users.md",
+        "BigQuery Table",
+        "users",
+        "Per-user dimension.",
+    )
+    (root / "tables" / "_log.md").write_text(
+        "# Update Log\n\n## 2026-06-30\n* **Creation**: Added [users](users.md).\n",
+        encoding="utf-8",
+    )
+
+    regenerate_indexes(root, synthesize=_stub_synth)
+
+    tables_index = (root / "tables" / "_index.md").read_text(encoding="utf-8")
+    assert "_log" not in tables_index
+    assert "(_log.md)" not in tables_index
+
+
 def test_regenerate_nonexistent_root_returns_empty(tmp_path: Path):
     assert regenerate_indexes(tmp_path / "nope") == []
