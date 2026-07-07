@@ -198,6 +198,58 @@ def test_root_index_with_extra_frontmatter_key_flags_idx_01(tmp_path: Path):
     assert "IDX-01" in _rules_for(validate_bundle(root), "_index.md")
 
 
+def test_idx01_allows_description_in_subdir_index(tmp_path: Path):
+    root = tmp_path / "bundle"
+    _write(
+        root / "tables" / "_index.md",
+        """
+        ---
+        description: Sales tables.
+        ---
+
+        # Tables
+
+        * [Orders](orders.md) - Orders.
+        """,
+    )
+    assert "IDX-01" not in _rules_for(validate_bundle(root), "tables/_index.md")
+
+
+def test_idx01_allows_description_and_okf_version_at_root(tmp_path: Path):
+    root = tmp_path / "bundle"
+    _write(
+        root / "_index.md",
+        """
+        ---
+        okf_version: "0.1"
+        description: The bundle.
+        ---
+
+        # Contents
+
+        * [tables/](tables/) - Tables.
+        """,
+    )
+    assert "IDX-01" not in _rules_for(validate_bundle(root), "_index.md")
+
+
+def test_idx01_rejects_okf_version_in_subdir(tmp_path: Path):
+    root = tmp_path / "bundle"
+    _write(
+        root / "tables" / "_index.md",
+        """
+        ---
+        okf_version: "0.1"
+        ---
+
+        # Tables
+
+        * [Orders](orders.md) - Orders.
+        """,
+    )
+    assert "IDX-01" in _rules_for(validate_bundle(root), "tables/_index.md")
+
+
 def test_index_without_heading_flags_idx_02(tmp_path: Path):
     root = tmp_path / "bundle"
     _write(

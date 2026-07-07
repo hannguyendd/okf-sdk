@@ -9,6 +9,7 @@ Run as a script::
 
     python -m okf_core.validate path/to/bundle
 """
+
 from __future__ import annotations
 
 import re
@@ -80,9 +81,7 @@ def _check_concept(rel: str, text: str) -> list[Violation]:
         )
         return out
     if status in ("invalid_yaml", "not_mapping"):
-        out.append(
-            Violation("DOC-03", rel, "frontmatter is not a YAML mapping")
-        )
+        out.append(Violation("DOC-03", rel, "frontmatter is not a YAML mapping"))
         return out
     type_value = fm.get("type")
     if not isinstance(type_value, str) or not type_value.strip():
@@ -97,26 +96,19 @@ def _check_index(rel: str, text: str, is_root: bool) -> list[Violation]:
     lines = text.splitlines()
     has_block = bool(lines) and lines[0].strip() == _FRONTMATTER_DELIM
     if has_block:
-        if not is_root:
+        status, fm = _split_frontmatter(text)
+        allowed = {"description", "okf_version"} if is_root else {"description"}
+        if status != "ok" or set(fm) - allowed:
+            allowed_str = "', '".join(sorted(allowed))
             out.append(
                 Violation(
-                    "IDX-01", rel, f"non-root {INDEX_FILENAME} must not carry frontmatter"
+                    "IDX-01",
+                    rel,
+                    f"{INDEX_FILENAME} frontmatter may declare only '{allowed_str}'",
                 )
             )
-        else:
-            status, fm = _split_frontmatter(text)
-            if status != "ok" or set(fm) - {"okf_version"}:
-                out.append(
-                    Violation(
-                        "IDX-01",
-                        rel,
-                        f"root {INDEX_FILENAME} frontmatter may declare only 'okf_version'",
-                    )
-                )
     if not _HEADING_RE.search(text):
-        out.append(
-            Violation("IDX-02", rel, f"{INDEX_FILENAME} has no section heading")
-        )
+        out.append(Violation("IDX-02", rel, f"{INDEX_FILENAME} has no section heading"))
     for bullet in _BULLET_RE.findall(text):
         if not _LINK_RE.search(bullet):
             out.append(
@@ -133,7 +125,11 @@ def _check_log(rel: str, text: str) -> list[Violation]:
     lines = text.splitlines()
     if lines and lines[0].strip() == _FRONTMATTER_DELIM:
         out.append(
-            Violation("RSV-01", rel, f"{LOG_FILENAME} must not be used as a concept (has frontmatter)")
+            Violation(
+                "RSV-01",
+                rel,
+                f"{LOG_FILENAME} must not be used as a concept (has frontmatter)",
+            )
         )
     for heading in _LEVEL2_HEADING_RE.findall(text):
         try:
@@ -164,9 +160,7 @@ def validate_bundle(root: Path | str) -> list[Violation]:
         try:
             text = md_path.read_bytes().decode("utf-8")
         except UnicodeDecodeError:
-            violations.append(
-                Violation("DOC-01", rel, "file is not valid UTF-8")
-            )
+            violations.append(Violation("DOC-01", rel, "file is not valid UTF-8"))
             continue
         if md_path.name == INDEX_FILENAME:
             violations.extend(_check_index(rel, text, is_root=rel == INDEX_FILENAME))
