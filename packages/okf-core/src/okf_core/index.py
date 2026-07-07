@@ -48,6 +48,18 @@ def _doc_tags(frontmatter: dict) -> list[str]:
     return [str(t) for t in raw]
 
 
+def _read_index_frontmatter(index_path: Path) -> dict:
+    """Return an existing ``_index.md``'s frontmatter, or ``{}`` if none/unparseable."""
+    if not index_path.is_file():
+        return {}
+    try:
+        return (
+            OKFDocument.parse(index_path.read_text(encoding="utf-8")).frontmatter or {}
+        )
+    except Exception:
+        return {}
+
+
 def _directories_to_index(bundle_root: Path) -> list[Path]:
     dirs: set[Path] = set()
     for md in bundle_root.rglob("*.md"):
@@ -78,6 +90,10 @@ def regenerate_indexes(
     dir_descriptions: dict[Path, str] = {}
 
     for directory in directories:
+        index_path = directory / INDEX_FILENAME
+        existing_fm = _read_index_frontmatter(index_path)
+        authored = str(existing_fm.get("description") or "").strip()
+
         entries: list[tuple[str, str, str, str, list[str]]] = []
 
         for child in sorted(directory.iterdir()):
@@ -95,24 +111,43 @@ def regenerate_indexes(
             elif child.is_dir():
                 desc = dir_descriptions.get(child, "")
                 entries.append(
-                    ("Subdirectories", child.name, f"{child.name}/{INDEX_FILENAME}", desc, [])
+                    (
+                        "Subdirectories",
+                        child.name,
+                        f"{child.name}/{INDEX_FILENAME}",
+                        desc,
+                        [],
+                    )
                 )
 
         if not entries:
             continue
 
-        index_path = directory / INDEX_FILENAME
-        index_path.write_text(_build_index_text(entries), encoding="utf-8")
+        # Preserve only allowlisted frontmatter: description (any level) and
+        # okf_version (bundle root only). Anything else is dropped (self-healing).
+        kept_fm: dict = {}
+        if directory == bundle_root and existing_fm.get("okf_version"):
+            kept_fm["okf_version"] = existing_fm["okf_version"]
+        if authored:
+            kept_fm["description"] = authored
+
+        body = _build_index_text(entries)
+        text = (
+            OKFDocument(frontmatter=kept_fm, body=body).serialize() if kept_fm else body
+        )
+        index_path.write_text(text, encoding="utf-8")
         written.append(index_path)
 
         if directory == bundle_root:
             continue
 
-        pairs = [(title, desc) for _, title, _, desc, _ in entries]
-        if len(pairs) == 1 and pairs[0][1]:
-            dir_descriptions[directory] = pairs[0][1]
+        # Caption shown in the parent's listing: authored description wins,
+        # else a synthesized contents summary.
+        if authored:
+            dir_descriptions[directory] = authored
         else:
             rel = str(directory.relative_to(bundle_root))
+            pairs = [(title, desc) for _, title, _, desc, _ in entries]
             dir_descriptions[directory] = synthesize(rel, pairs)
 
     return written

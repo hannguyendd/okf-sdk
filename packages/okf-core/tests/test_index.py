@@ -62,7 +62,7 @@ def test_regenerate_groups_by_type_and_links_relative(tmp_path: Path):
 
     root_index = (root / "_index.md").read_text(encoding="utf-8")
     assert "# Subdirectories" in root_index
-    assert "(datasets/_index.md) - GA4 obfuscated ecommerce sample." in root_index
+    assert "(datasets/_index.md) - stub: 1 items" in root_index
     assert "(tables/_index.md) - stub: 2 items" in root_index
 
 
@@ -76,7 +76,9 @@ def test_regenerate_skips_empty_directories(tmp_path: Path):
     assert not (root / "empty_dir" / "_index.md").exists()
 
 
-def test_regenerate_single_child_reuses_description(tmp_path: Path):
+def test_regenerate_single_child_synthesizes_not_reuses(tmp_path: Path):
+    # The old single-child reuse shortcut is dropped: a directory with no
+    # authored description always gets a synthesized caption, even with one child.
     root = tmp_path / "bundle"
     _write_doc(
         root / "datasets" / "only.md",
@@ -95,8 +97,9 @@ def test_regenerate_single_child_reuses_description(tmp_path: Path):
     regenerate_indexes(root, synthesize=counting_synth)
 
     root_index = (root / "_index.md").read_text(encoding="utf-8")
-    assert "(datasets/_index.md) - The only dataset in this bundle." in root_index
-    assert call_count == 0
+    assert "The only dataset in this bundle." not in root_index
+    assert "(datasets/_index.md) - stub: 1 items" in root_index
+    assert call_count == 1
 
 
 def test_default_fallback_synthesizer_summarizes_multi_child_dir(tmp_path: Path):
@@ -143,7 +146,10 @@ def test_regenerate_appends_tags_suffix(tmp_path: Path):
     regenerate_indexes(root, synthesize=_stub_synth)
 
     tables_index = (root / "tables" / "_index.md").read_text(encoding="utf-8")
-    assert "* [Orders](orders.md) - Daily order facts. _(tags: billing, daily)_" in tables_index
+    assert (
+        "* [Orders](orders.md) - Daily order facts. _(tags: billing, daily)_"
+        in tables_index
+    )
 
 
 def test_regenerate_omits_tags_suffix_when_absent(tmp_path: Path):
@@ -188,3 +194,86 @@ def test_regenerate_normalizes_non_list_tags(tmp_path: Path):
 
 def test_regenerate_nonexistent_root_returns_empty(tmp_path: Path):
     assert regenerate_indexes(tmp_path / "nope") == []
+
+
+def test_authored_description_preserved_across_reindex(tmp_path: Path):
+    root = tmp_path / "bundle"
+    _write_doc(root / "tables" / "orders.md", "Table", "Orders", "One row per order.")
+    regenerate_indexes(root)  # creates tables/_index.md (no frontmatter)
+    idx = root / "tables" / "_index.md"
+    idx.write_text(
+        "---\ndescription: Sales tables.\n---\n\n" + idx.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    regenerate_indexes(root)
+
+    fm = OKFDocument.parse((root / "tables" / "_index.md").read_text()).frontmatter
+    assert fm == {"description": "Sales tables."}
+
+
+def test_authored_description_lifted_into_parent_caption(tmp_path: Path):
+    root = tmp_path / "bundle"
+    _write_doc(root / "tables" / "orders.md", "Table", "Orders", "One row per order.")
+    regenerate_indexes(root)
+    idx = root / "tables" / "_index.md"
+    idx.write_text(
+        "---\ndescription: Sales tables.\n---\n\n" + idx.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    regenerate_indexes(root)
+
+    assert (
+        "[tables](tables/_index.md) - Sales tables." in (root / "_index.md").read_text()
+    )
+
+
+def test_root_okf_version_preserved(tmp_path: Path):
+    root = tmp_path / "bundle"
+    _write_doc(root / "a.md", "Doc", "A", "First.")
+    regenerate_indexes(root)
+    root_idx = root / "_index.md"
+    root_idx.write_text(
+        '---\nokf_version: "0.1"\n---\n\n' + root_idx.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    regenerate_indexes(root)
+
+    fm = OKFDocument.parse((root / "_index.md").read_text()).frontmatter
+    assert fm == {"okf_version": "0.1"}
+
+
+def test_non_allowlisted_index_frontmatter_pruned(tmp_path: Path):
+    root = tmp_path / "bundle"
+    _write_doc(root / "d" / "c.md", "Doc", "C", "Third.")
+    regenerate_indexes(root)
+    idx = root / "d" / "_index.md"
+    idx.write_text(
+        "---\ndescription: Keep me.\nbogus: drop me\n---\n\n"
+        + idx.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    regenerate_indexes(root)
+
+    fm = OKFDocument.parse((root / "d" / "_index.md").read_text()).frontmatter
+    assert fm == {"description": "Keep me."}
+
+
+def test_okf_version_dropped_from_subdir_index(tmp_path: Path):
+    # okf_version is a root-only key; regeneration must not keep it in a subdir.
+    root = tmp_path / "bundle"
+    _write_doc(root / "sub" / "c.md", "Doc", "C", "Third.")
+    regenerate_indexes(root)
+    idx = root / "sub" / "_index.md"
+    idx.write_text(
+        '---\nokf_version: "0.1"\n---\n\n' + idx.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    regenerate_indexes(root)
+
+    fm = OKFDocument.parse((root / "sub" / "_index.md").read_text()).frontmatter
+    assert fm == {}
