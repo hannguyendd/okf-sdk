@@ -1,4 +1,5 @@
 """Producer operations over an OKF bundle (framework-agnostic)."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -84,8 +85,7 @@ def _append_log_for(concept_path: Path, label: str, action: str, verb: str) -> P
     log_path = concept_path.parent / LOG_FILENAME
     dt = _now_utc()
     entry = (
-        f"* **{_utc_time(dt)}** **{action}**: "
-        f"{verb} [{label}]({concept_path.name})."
+        f"* **{_utc_time(dt)}** **{action}**: {verb} [{label}]({concept_path.name})."
     )
     _append_log(log_path, entry, _utc_date(dt))
     return log_path
@@ -220,9 +220,7 @@ def _rel_dir(bundle_root: Path, directory: Path) -> str:
     return directory.relative_to(bundle_root).as_posix()
 
 
-def read_index(
-    bundle_root: Path, dir: str | None = None, depth: int = 1
-) -> list[dict]:
+def read_index(bundle_root: Path, dir: str | None = None, depth: int = 1) -> list[dict]:
     """Return ``_index.md`` files for progressive disclosure, breadth-first.
 
     Starts at ``dir`` (bundle root if omitted) and descends ``depth`` levels
@@ -312,9 +310,7 @@ def _rewrite_inbound_links(
     return sorted(relinked)
 
 
-def move_concept(
-    bundle_root: Path, from_concept_id: str, to_concept_id: str
-) -> dict:
+def move_concept(bundle_root: Path, from_concept_id: str, to_concept_id: str) -> dict:
     """Relocate a concept to a new id: rewrite links, reindex, and log.
 
     Moves the file from ``from_concept_id`` to ``to_concept_id``, rewriting the
@@ -370,14 +366,14 @@ def _append_log_deletion(concept_path: Path, label: str) -> Path:
     log_path = concept_path.parent / LOG_FILENAME
     dt = _now_utc()
     _append_log(
-        log_path, f"* **{_utc_time(dt)}** **Deletion**: Removed `{label}`.", _utc_date(dt)
+        log_path,
+        f"* **{_utc_time(dt)}** **Deletion**: Removed `{label}`.",
+        _utc_date(dt),
     )
     return log_path
 
 
-def delete_concept(
-    bundle_root: Path, concept_id: str, force: bool = False
-) -> dict:
+def delete_concept(bundle_root: Path, concept_id: str, force: bool = False) -> dict:
     """Delete a concept; safe by default, ``force`` unlinks inbound references.
 
     Collects every other concept whose body links to ``concept_id``. When such
@@ -430,4 +426,64 @@ def delete_concept(
         "unlinked": sorted(unlinked),
         "log": log_path.relative_to(bundle_root).as_posix(),
         "indexes": [Path(p).relative_to(bundle_root).as_posix() for p in indexes],
+    }
+
+
+def _log_describe(index_path: Path, cleared: bool) -> Path:
+    """Append an Update entry recording a directory-description change."""
+    log_path = index_path.parent / LOG_FILENAME
+    dt = _now_utc()
+    what = "Cleared" if cleared else "Set"
+    _append_log(
+        log_path,
+        f"* **{_utc_time(dt)}** **Update**: {what} description for this directory.",
+        _utc_date(dt),
+    )
+    return log_path
+
+
+def describe_directory(bundle_root: Path, dir: str, description: str) -> dict:
+    """Set or clear a directory's authored description in its ``_index.md`` frontmatter.
+
+    An empty/whitespace ``description`` clears the key (reverting to the
+    synthesized contents summary). Reindexes so the value reaches the parent's
+    caption, and appends an Update entry to the directory's ``_log.md``. Fails if
+    ``dir`` escapes the bundle root, is not a directory, or has no ``_index.md``
+    (directories only exist once populated, so there is always an index to edit).
+    """
+    root = bundle_root.resolve()
+    target = root if not dir else (root / dir).resolve()
+    if target != root and root not in target.parents:
+        raise ValueError(f"dir escapes the bundle root: {dir}")
+    if not target.is_dir():
+        raise ValueError(f"directory not found: {dir}")
+    index_path = target / INDEX_FILENAME
+    if not index_path.is_file():
+        raise ValueError(f"directory has no {INDEX_FILENAME}: {dir}")
+
+    doc = OKFDocument.parse(index_path.read_text(encoding="utf-8"))
+    fm = dict(doc.frontmatter)
+    desc = description.strip()
+    cleared = not desc
+    if cleared:
+        fm.pop("description", None)
+    else:
+        fm["description"] = desc
+
+    if fm:
+        index_path.write_text(
+            OKFDocument(frontmatter=fm, body=doc.body).serialize(), encoding="utf-8"
+        )
+    else:
+        body = doc.body if doc.body.endswith("\n") else doc.body + "\n"
+        index_path.write_text(body, encoding="utf-8")
+
+    log_path = _log_describe(index_path, cleared)
+    indexes = regenerate_indexes(root)
+    return {
+        "dir": _rel_dir(root, target),
+        "action": "cleared" if cleared else "described",
+        "description": None if cleared else desc,
+        "log": log_path.relative_to(root).as_posix(),
+        "indexes": [Path(p).relative_to(root).as_posix() for p in indexes],
     }

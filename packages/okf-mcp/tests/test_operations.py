@@ -501,7 +501,11 @@ def test_delete_rejects_reserved(tmp_path):
 def _write_concept(path, type_, title):
     path.parent.mkdir(parents=True, exist_ok=True)
     doc = OKFDocument(
-        frontmatter={"type": type_, "title": title, "timestamp": "2026-06-30T00:00:00Z"},
+        frontmatter={
+            "type": type_,
+            "title": title,
+            "timestamp": "2026-06-30T00:00:00Z",
+        },
         body=f"# {title}\n",
     )
     path.write_text(doc.serialize(), encoding="utf-8")
@@ -616,3 +620,79 @@ def test_move_entries_share_one_instant(tmp_path, monkeypatch):
     # _log_move computes _now_utc() once and reuses it for both entries.
     assert "**01:00:00Z**" in dest
     assert "**01:00:00Z**" in src
+
+
+def test_describe_sets_description_and_logs(tmp_path):
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
+    res = operations.describe_directory(tmp_path, "tables", "Sales tables.")
+
+    assert res["action"] == "described"
+    assert res["description"] == "Sales tables."
+    assert res["dir"] == "tables"
+    fm = OKFDocument.parse((tmp_path / "tables" / "_index.md").read_text()).frontmatter
+    assert fm["description"] == "Sales tables."
+    log = (tmp_path / "tables" / "_log.md").read_text()
+    assert "**Update**: Set description for this directory." in log
+
+
+def test_describe_lifts_into_parent_caption(tmp_path):
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
+    operations.describe_directory(tmp_path, "tables", "Sales tables.")
+    assert (
+        "[tables](tables/_index.md) - Sales tables."
+        in (tmp_path / "_index.md").read_text()
+    )
+
+
+def test_describe_empty_clears(tmp_path):
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
+    operations.describe_directory(tmp_path, "tables", "Sales tables.")
+    res = operations.describe_directory(tmp_path, "tables", "   ")
+
+    assert res["action"] == "cleared"
+    assert res["description"] is None
+    fm = OKFDocument.parse((tmp_path / "tables" / "_index.md").read_text()).frontmatter
+    assert "description" not in fm
+    log = (tmp_path / "tables" / "_log.md").read_text()
+    assert "**Update**: Cleared description for this directory." in log
+
+
+def test_describe_overwrites_existing(tmp_path):
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
+    operations.describe_directory(tmp_path, "tables", "First.")
+    operations.describe_directory(tmp_path, "tables", "Second.")
+    fm = OKFDocument.parse((tmp_path / "tables" / "_index.md").read_text()).frontmatter
+    assert fm["description"] == "Second."
+
+
+def test_describe_errors_without_index(tmp_path):
+    (tmp_path / "empty").mkdir()
+    with pytest.raises(ValueError):
+        operations.describe_directory(tmp_path, "empty", "nope")
+
+
+def test_describe_errors_on_missing_dir(tmp_path):
+    with pytest.raises(ValueError):
+        operations.describe_directory(tmp_path, "nope", "x")
+
+
+def test_describe_rejects_escaping_dir(tmp_path):
+    with pytest.raises(ValueError):
+        operations.describe_directory(tmp_path, "../outside", "nope")
+
+
+def test_describe_log_entry_has_time_prefix(tmp_path):
+    operations.add_concept(
+        tmp_path, "tables/orders", {"type": "Table", "title": "Orders"}, ""
+    )
+    operations.describe_directory(tmp_path, "tables", "Sales tables.")
+    log = (tmp_path / "tables" / "_log.md").read_text()
+    assert re.search(r"^\* \*\*\d{2}:\d{2}:\d{2}Z\*\* \*\*Update\*\*:", log, re.M)
