@@ -1,4 +1,5 @@
 """FastMCP producer server exposing okf_mcp.operations as MCP tools."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -106,9 +107,7 @@ def move(
     relative links stay valid, then regenerates indexes and appends a Move entry
     to `_log.md`.
     """
-    return operations.move_concept(
-        _root(bundle_root), from_concept_id, to_concept_id
-    )
+    return operations.move_concept(_root(bundle_root), from_concept_id, to_concept_id)
 
 
 @mcp.tool()
@@ -139,6 +138,23 @@ def reindex(bundle_root: str | None = None) -> dict:
     regenerated index paths (bundle-relative) and their count.
     """
     return operations.reindex_bundle(_root(bundle_root))
+
+
+@mcp.tool()
+def describe(
+    dir: str,
+    description: str,
+    bundle_root: str | None = None,
+) -> dict:
+    """Set or clear a directory's authored description.
+
+    Writes `description` into the directory's `_index.md` frontmatter, regenerates
+    indexes so it appears in the parent's caption, and appends an Update entry to
+    that directory's `_log.md`. Pass an empty string to clear it (reverting to the
+    synthesized contents summary). `dir` is a bundle-relative directory that must
+    already have an `_index.md`.
+    """
+    return operations.describe_directory(_root(bundle_root), dir, description)
 
 
 def main() -> None:
