@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from okf_mcp import operations
@@ -17,18 +19,62 @@ class Settings(BaseSettings):
     )
 
     bundle_root: Path | None = None
+    store_root: Path | None = None
 
 
 settings = Settings()
 mcp = FastMCP("okf-producer")
 
 
-def _root(bundle_root: str | None) -> Path:
-    return operations.resolve_bundle_root(bundle_root, settings.bundle_root)
+def _uri_to_path(uri: object) -> Path | None:
+    """Convert a ``file://`` root URI to a local path; ``None`` if not a file URI."""
+    parsed = urlparse(str(uri))
+    if parsed.scheme != "file":
+        return None
+    path = url2pathname(parsed.path)
+    return Path(path) if path else None
+
+
+async def _project_root(ctx: Context) -> Path:
+    """Discover the current project directory from the client's MCP roots.
+
+    Returns the first ``file://`` root the client advertises; falls back to the
+    process working directory when the client sends no usable roots or lacks the
+    ``roots`` capability.
+    """
+    try:
+        result = await ctx.session.list_roots()
+        roots = result.roots or []
+    except Exception:
+        roots = []
+    for root in roots:
+        path = _uri_to_path(root.uri)
+        if path is not None:
+            return path
+    return Path.cwd()
+
+
+async def _root(bundle_root: str | None, ctx: Context) -> Path:
+    """Resolve the effective bundle root for a tool call.
+
+    Precedence: an explicit ``bundle_root`` arg wins; otherwise store mode
+    (``OKF_STORE_ROOT``) partitions per project into ``<store_root>/<project-folder>``;
+    otherwise the legacy single bundle (``OKF_BUNDLE_ROOT``). Setting both env
+    roots (with no arg) is an error.
+    """
+    if bundle_root:
+        return operations.resolve_bundle_root(bundle_root, None)
+    if settings.store_root and settings.bundle_root:
+        raise ValueError("set OKF_STORE_ROOT or OKF_BUNDLE_ROOT, not both")
+    if settings.store_root:
+        project = await _project_root(ctx)
+        return operations.resolve_store_bundle_root(settings.store_root, project)
+    return operations.resolve_bundle_root(None, settings.bundle_root)
 
 
 @mcp.tool()
-def add(
+async def add(
+    ctx: Context,
     concept_id: str,
     frontmatter: dict[str, Any],
     body: str,
@@ -42,11 +88,14 @@ def add(
     omitted. Fails if the concept already exists. Regenerates indexes and
     appends a Creation entry to the directory's `_log.md`.
     """
-    return operations.add_concept(_root(bundle_root), concept_id, frontmatter, body)
+    return operations.add_concept(
+        await _root(bundle_root, ctx), concept_id, frontmatter, body
+    )
 
 
 @mcp.tool()
-def patch(
+async def patch(
+    ctx: Context,
     concept_id: str,
     frontmatter: dict[str, Any] | None = None,
     body: str | None = None,
@@ -59,27 +108,31 @@ def patch(
     refreshed unless you pass one. Fails if the concept does not exist.
     Regenerates indexes and appends an Update entry to `_log.md`.
     """
-    return operations.patch_concept(_root(bundle_root), concept_id, frontmatter, body)
+    return operations.patch_concept(
+        await _root(bundle_root, ctx), concept_id, frontmatter, body
+    )
 
 
 @mcp.tool()
-def get(concept_id: str, bundle_root: str | None = None) -> dict:
+async def get(ctx: Context, concept_id: str, bundle_root: str | None = None) -> dict:
     """Read one concept: its frontmatter, body, and resolved outgoing links."""
-    return operations.get_concept(_root(bundle_root), concept_id)
+    return operations.get_concept(await _root(bundle_root, ctx), concept_id)
 
 
 @mcp.tool(name="list")
-def list_(
+async def list_(
+    ctx: Context,
     type: str | None = None,
     prefix: str | None = None,
     bundle_root: str | None = None,
 ) -> list[dict]:
     """List concepts, optionally filtered by exact `type` and/or id `prefix`."""
-    return operations.list_concepts(_root(bundle_root), type, prefix)
+    return operations.list_concepts(await _root(bundle_root, ctx), type, prefix)
 
 
 @mcp.tool()
-def read_index(
+async def read_index(
+    ctx: Context,
     dir: str | None = None,
     depth: int = 1,
     bundle_root: str | None = None,
@@ -89,11 +142,12 @@ def read_index(
     `dir` is a bundle-relative directory (root if omitted). `depth` (1-3) sets
     how many directory levels of indexes to return, breadth-first.
     """
-    return operations.read_index(_root(bundle_root), dir, depth)
+    return operations.read_index(await _root(bundle_root, ctx), dir, depth)
 
 
 @mcp.tool()
-def move(
+async def move(
+    ctx: Context,
     from_concept_id: str,
     to_concept_id: str,
     bundle_root: str | None = None,
@@ -107,11 +161,14 @@ def move(
     relative links stay valid, then regenerates indexes and appends a Move entry
     to `_log.md`.
     """
-    return operations.move_concept(_root(bundle_root), from_concept_id, to_concept_id)
+    return operations.move_concept(
+        await _root(bundle_root, ctx), from_concept_id, to_concept_id
+    )
 
 
 @mcp.tool()
-def delete(
+async def delete(
+    ctx: Context,
     concept_id: str,
     force: bool = False,
     bundle_root: str | None = None,
@@ -125,11 +182,11 @@ def delete(
     indexes, and appends a Deletion entry to `_log.md`. Irreversible. Fails if
     the concept does not exist.
     """
-    return operations.delete_concept(_root(bundle_root), concept_id, force)
+    return operations.delete_concept(await _root(bundle_root, ctx), concept_id, force)
 
 
 @mcp.tool()
-def reindex(bundle_root: str | None = None) -> dict:
+async def reindex(ctx: Context, bundle_root: str | None = None) -> dict:
     """Regenerate every `_index.md` in the bundle from current content.
 
     Use this to repair indexes that have drifted -- for example after editing
@@ -137,11 +194,12 @@ def reindex(bundle_root: str | None = None) -> dict:
     directory `_index.md` files; does not touch `_log.md`. Returns the
     regenerated index paths (bundle-relative) and their count.
     """
-    return operations.reindex_bundle(_root(bundle_root))
+    return operations.reindex_bundle(await _root(bundle_root, ctx))
 
 
 @mcp.tool()
-def describe(
+async def describe(
+    ctx: Context,
     dir: str,
     description: str,
     bundle_root: str | None = None,
@@ -154,7 +212,7 @@ def describe(
     synthesized contents summary). `dir` is a bundle-relative directory that must
     already have an `_index.md`.
     """
-    return operations.describe_directory(_root(bundle_root), dir, description)
+    return operations.describe_directory(await _root(bundle_root, ctx), dir, description)
 
 
 def main() -> None:
