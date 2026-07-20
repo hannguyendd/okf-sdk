@@ -22,6 +22,38 @@ config:
 }
 ```
 
+### Store mode (`OKF_STORE_ROOT`)
+
+Instead of pointing at a single bundle, set `OKF_STORE_ROOT` to a base directory
+and the server partitions documents into a **per-project subfolder** under it —
+no per-project configuration:
+
+```json
+{
+  "mcpServers": {
+    "okf-producer": {
+      "command": "okf-mcp",
+      "env": { "OKF_STORE_ROOT": "/path/to/store" }
+    }
+  }
+}
+```
+
+The subfolder is named `<project-basename>-<hash8>`, e.g. a project at
+`/Users/you/dev/acme/web-app` resolves to `/path/to/store/web-app-3f9a1c7b/`. The
+basename is the readable prefix; the 8-hex-char SHA-256 of the absolute path keeps
+two same-named projects from colliding. The subfolder is created on first write.
+
+The **project path** comes from the client's MCP `roots` capability (the first
+advertised workspace folder); if the client sends no roots, the server falls back
+to its working directory.
+
+**Resolution precedence** (per call): an explicit `bundle_root` argument wins;
+otherwise `OKF_STORE_ROOT` (store mode); otherwise `OKF_BUNDLE_ROOT` (single
+bundle). Setting **both** `OKF_STORE_ROOT` and `OKF_BUNDLE_ROOT` is an error
+(`set OKF_STORE_ROOT or OKF_BUNDLE_ROOT, not both`). `OKF_STORE_ROOT` must be an
+existing directory.
+
 ## Setup (stdio)
 
 `main()` calls `mcp.run()`, which uses the **stdio** transport: the client

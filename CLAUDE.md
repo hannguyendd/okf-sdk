@@ -23,8 +23,12 @@ plus `pydantic-settings`) for authoring bundles: tools to `add`, `patch`,
 disclosure), `describe` (set/clear a directory's authored `description` in its
 `_index.md` frontmatter), and `reindex` (regenerate all `_index.md` to repair
 drift). Write tools re-index and append a directory-scoped `_log.md` entry after
-each write. The bundle root comes from `OKF_BUNDLE_ROOT` (overridable per call). See
-`docs/superpowers/specs/2026-06-29-okf-mcp-producer-design.md` and
+each write. The bundle root comes from `OKF_BUNDLE_ROOT` (overridable per call), or set
+`OKF_STORE_ROOT` for **store mode** — a base directory the server auto-partitions
+into a per-project subfolder `<project-basename>-<hash8>` (project path from the
+MCP `roots` capability, cwd fallback); setting both env vars is an error. See
+`docs/superpowers/specs/2026-06-29-okf-mcp-producer-design.md`,
+`docs/superpowers/specs/2026-07-20-okf-mcp-store-mode-design.md`, and
 `docs/superpowers/plans/2026-06-29-okf-mcp-producer.md`.
 
 ## Tooling
