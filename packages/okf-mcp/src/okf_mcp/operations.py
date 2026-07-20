@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,6 +33,44 @@ def resolve_bundle_root(arg: str | None, env_default: Path | None) -> Path:
     root = Path(chosen).resolve()
     if not root.is_dir():
         raise ValueError(f"bundle root is not a directory: {root}")
+    return root
+
+
+_SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _slug(name: str) -> str:
+    """Map any run of filesystem-unsafe characters to a single ``-`` and trim."""
+    return _SLUG_RE.sub("-", name).strip("-")
+
+
+def derive_project_folder(project_path: str | Path) -> str:
+    """Per-project subfolder name: ``<slug(basename)>-<hash8-of-absolute-path>``.
+
+    The path is resolved to an absolute, symlink-free form first, so the name is
+    stable regardless of how the path was expressed. Two projects sharing a
+    basename at different absolute paths hash differently and never collide. An
+    empty basename (e.g. the filesystem root) falls back to ``project``.
+    """
+    p = Path(project_path).resolve()
+    base = _slug(p.name) or "project"
+    digest = hashlib.sha256(p.as_posix().encode("utf-8")).hexdigest()[:8]
+    return f"{base}-{digest}"
+
+
+def resolve_store_bundle_root(
+    store_root: str | Path, project_path: str | Path
+) -> Path:
+    """Resolve ``<store_root>/<derive_project_folder(project_path)>``.
+
+    Requires ``store_root`` to be an existing directory (fail fast on a misconfigured
+    ``OKF_STORE_ROOT``); auto-creates the per-project subfolder on first use.
+    """
+    store = Path(store_root).resolve()
+    if not store.is_dir():
+        raise ValueError(f"store root is not a directory: {store}")
+    root = store / derive_project_folder(project_path)
+    root.mkdir(parents=True, exist_ok=True)
     return root
 
 

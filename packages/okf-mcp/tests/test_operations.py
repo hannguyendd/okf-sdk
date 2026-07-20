@@ -696,3 +696,55 @@ def test_describe_log_entry_has_time_prefix(tmp_path):
     operations.describe_directory(tmp_path, "tables", "Sales tables.")
     log = (tmp_path / "tables" / "_log.md").read_text()
     assert re.search(r"^\* \*\*\d{2}:\d{2}:\d{2}Z\*\* \*\*Update\*\*:", log, re.M)
+
+
+def test_derive_project_folder_shape(tmp_path):
+    name = operations.derive_project_folder(tmp_path / "web-app")
+    assert re.fullmatch(r"web-app-[0-9a-f]{8}", name)
+
+
+def test_derive_project_folder_is_deterministic(tmp_path):
+    project = tmp_path / "web-app"
+    assert operations.derive_project_folder(project) == operations.derive_project_folder(
+        project
+    )
+
+
+def test_derive_project_folder_distinguishes_same_basename(tmp_path):
+    a = tmp_path / "a" / "web-app"
+    b = tmp_path / "b" / "web-app"
+    assert operations.derive_project_folder(a) != operations.derive_project_folder(b)
+
+
+def test_derive_project_folder_slugifies_basename(tmp_path):
+    name = operations.derive_project_folder(tmp_path / "My App (v2)")
+    assert re.fullmatch(r"My-App-v2-[0-9a-f]{8}", name)
+
+
+def test_derive_project_folder_empty_basename_falls_back(tmp_path):
+    # Filesystem root has an empty ``.name``.
+    name = operations.derive_project_folder("/")
+    assert re.fullmatch(r"project-[0-9a-f]{8}", name)
+
+
+def test_resolve_store_bundle_root_creates_subfolder(tmp_path):
+    store = tmp_path / "store"
+    store.mkdir()
+    project = tmp_path / "proj" / "web-app"
+    root = operations.resolve_store_bundle_root(store, project)
+    assert root.is_dir()
+    assert root == store.resolve() / operations.derive_project_folder(project)
+
+
+def test_resolve_store_bundle_root_requires_existing_store(tmp_path):
+    with pytest.raises(ValueError):
+        operations.resolve_store_bundle_root(
+            tmp_path / "missing", tmp_path / "web-app"
+        )
+
+
+def test_resolve_store_bundle_root_rejects_file_store(tmp_path):
+    f = tmp_path / "store.txt"
+    f.write_text("x")
+    with pytest.raises(ValueError):
+        operations.resolve_store_bundle_root(f, tmp_path / "web-app")
