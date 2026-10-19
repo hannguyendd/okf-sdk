@@ -32,8 +32,11 @@ plus `pydantic-settings`) for authoring bundles: tools to `add`, `patch`,
 `move`, `delete`, `get`, and `list` concepts, `read_index` (progressive
 disclosure), `describe` (set/clear a directory's authored `description` in its
 `_index.md` frontmatter), and `reindex` (regenerate all `_index.md` to repair
-drift). Write tools re-index and append a directory-scoped `_log.md` entry after
-each write. The bundle root comes from `OKF_BUNDLE_ROOT` (overridable per call), or set
+drift), plus `search` (semantic search over `_index.md` files via a local
+OpenAI-compatible embedding server and a sqlite-vec file kept outside the bundle;
+synced lazily at search time, see
+`docs/superpowers/specs/2026-10-19-okf-mcp-vector-search-design.md`). Write tools
+re-index and append a directory-scoped `_log.md` entry after each write. The bundle root comes from `OKF_BUNDLE_ROOT` (overridable per call), or set
 `OKF_STORE_ROOT` for **store mode** — a base directory the server auto-partitions
 into a per-project subfolder `<project-basename>-<hash8>` (project path from the
 MCP `roots` capability, cwd fallback); setting both env vars is an error. See

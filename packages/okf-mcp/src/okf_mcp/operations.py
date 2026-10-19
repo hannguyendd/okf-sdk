@@ -29,6 +29,9 @@ from okf_core import (
 )
 from okf_core.storage import is_uri
 
+from okf_mcp.embeddings import EmbeddingConfig, embed_texts
+from okf_mcp.vector_store import Embedder, VectorStore, default_db_path
+
 
 def resolve_bundle_root(
     arg: "str | Path | None", env_default: "str | Path | None"
@@ -581,3 +584,43 @@ def describe_directory(
         "log": log_key,
         "indexes": list(indexes),
     }
+
+
+_MAX_TOP_K = 20
+
+
+def search_indexes(
+    bundle_root: "Path | str | Storage",
+    query: str,
+    top_k: int = 5,
+    dir: str | None = None,
+    *,
+    config: EmbeddingConfig | None,
+    max_chars: int = 6000,
+    db_path: Path | str | None = None,
+    embed: Embedder | None = None,
+) -> list[dict]:
+    """Semantic search over the bundle's ``_index.md`` files.
+
+    Syncs the vector store with the bundle first (embedding only changed files),
+    then returns up to ``top_k`` hits ``{dir, path, score, excerpt}``, best first,
+    optionally limited to ``dir``. Raises if the embedding server fails; never
+    answers from a store it could not bring up to date. Read-only for the bundle.
+    """
+    if not query or not query.strip():
+        raise ValueError("query must not be blank")
+    if not isinstance(top_k, int) or isinstance(top_k, bool) or not 1 <= top_k <= _MAX_TOP_K:
+        raise ValueError(f"top_k must be an integer in 1..{_MAX_TOP_K}")
+    start = _clean_dir(dir)
+    if config is None:
+        raise ValueError(
+            "embedding is not configured: set OKF_EMBEDDING_URL and OKF_EMBEDDING_MODEL"
+        )
+    embedder = embed or (lambda texts: embed_texts(texts, config))
+    storage = open_storage(bundle_root)
+    store = VectorStore(db_path or default_db_path(storage))
+    try:
+        store.sync(storage, embedder, model=config.model, max_chars=max_chars)
+        return store.query(storage, embedder([query])[0], top_k, start)
+    finally:
+        store.close()

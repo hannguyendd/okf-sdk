@@ -20,7 +20,7 @@ Ideas captured for later review. Each needs a brainstorm and a spec before imple
 
 ## 3. Vectorize index files to improve search
 
-**Status:** Not started.
+**Status:** Done — `search` tool in `okf-mcp` over `_index.md` files (sqlite-vec, local OpenAI-compatible embeddings; see `docs/superpowers/specs/2026-10-19-okf-mcp-vector-search-design.md`). Concept-level search remains future work.
 
 - Embed `_index.md` files (and possibly concepts) into a vector index so search goes beyond keyword and tree browsing.
 - Open questions: embedding provider (local vs API), where the vector store lives, how it stays in sync with writes and `reindex`, and whether it stays optional so `okf-core` keeps PyYAML as its only runtime dependency.

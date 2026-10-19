@@ -125,7 +125,7 @@ printf '%s\n' \
 ```
 
 Expect an `initialize` result naming `okf-producer`, then a `tools/list` with
-`add, patch, get, list, read_index, move, reindex, delete, describe`. Or explore interactively with the
+`add, patch, get, list, read_index, move, reindex, delete, describe, search`. Or explore interactively with the
 [MCP Inspector](https://github.com/modelcontextprotocol/inspector):
 
 ```bash
@@ -149,10 +149,39 @@ traffic — tools return values rather than printing.
 - `reindex(bundle_root?)` — regenerate every `_index.md` from current content to repair drift (e.g. files edited outside these tools); does not touch `_log.md`.
 - `describe(dir, description, bundle_root?)` — set a directory's authored `description` (its purpose) in that directory's `_index.md` frontmatter; regenerates indexes so it appears in the parent's listing, and appends an Update `_log.md` entry. An empty string clears it (reverting to the synthesized summary). Fails if `dir` has no `_index.md`.
 
+- `search(query, top_k=5, dir?, bundle_root?)` — semantic search over `_index.md` files: returns up to `top_k` (1-20) hits `{dir, path, score, excerpt}`, best first, optionally limited to `dir` and below. Use it to find the right area, then go deeper with `read_index` / `list` / `get` on a hit's `dir`. See [Search](#search).
+
 Every write tool (`add`/`patch`/`move`/`delete`/`describe`) regenerates indexes and appends
 a dated entry to the relevant directory `_log.md`. `add`/`patch` manage the
 `timestamp` frontmatter automatically; `move` preserves it. `reindex` only regenerates
 indexes — it is index maintenance, not a concept change, so it writes no log entry.
+
+## Search
+
+`search` embeds every `_index.md` (one file = one chunk, truncated to
+`OKF_EMBEDDING_MAX_CHARS`) with a **local OpenAI-compatible embedding server**
+and ranks them by cosine similarity. Concept bodies are not searched. It is
+disabled until you configure the server; every other tool works without it.
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `OKF_EMBEDDING_URL` | Base URL incl. any `/v1` prefix; `/embeddings` is appended (e.g. Ollama: `http://localhost:11434/v1`) | unset (search errors) |
+| `OKF_EMBEDDING_MODEL` | Model name sent to the server | unset (search errors) |
+| `OKF_EMBEDDING_API_KEY` | Bearer token, if the server wants one | none |
+| `OKF_EMBEDDING_MAX_CHARS` | Max characters of an `_index.md` sent to the model | `6000` |
+| `OKF_VECTOR_DB` | Path of the sqlite-vec file | sibling `<bundle_root>.vectors.db` |
+
+Vectors live in a single [`sqlite-vec`](https://github.com/asg017/sqlite-vec) file
+**outside** the bundle (the sibling `<bundle_root>.vectors.db`; set `OKF_VECTOR_DB`
+for non-local storage). The file is synced at the start of every search — only
+indexes whose text changed are re-embedded and deleted ones are dropped — so write
+tools never contact the embedding server, and edits made outside them are picked up
+too. The first search after many changes is slower. If the embedding server is
+down, `search` fails rather than answering from stale vectors. Changing
+`OKF_EMBEDDING_MODEL` (or the server starting to return vectors of another dimension)
+rebuilds the file on the next search. Concurrent searches are safe: embedding
+happens outside the database write transaction. This needs a Python
+whose `sqlite3` allows loadable extensions (uv-managed Python does).
 
 ## Development
 

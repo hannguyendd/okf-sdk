@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -12,6 +13,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from okf_mcp import operations
+from okf_mcp.embeddings import EmbeddingConfig
 
 
 class Settings(BaseSettings):
@@ -23,6 +25,16 @@ class Settings(BaseSettings):
     # backend (see ``okf_core.open_storage``). Kept as ``str`` so URIs survive.
     bundle_root: str | None = None
     store_root: str | None = None
+
+    # Semantic search (``search`` tool). Only the tool needs these; leave unset to
+    # keep it disabled. ``embedding_url`` is an OpenAI-compatible base URL
+    # including any ``/v1`` prefix. ``vector_db`` overrides the default sibling
+    # ``<bundle_root>.vectors.db`` file (required for non-local storage).
+    embedding_url: str | None = None
+    embedding_model: str | None = None
+    embedding_api_key: str | None = None
+    embedding_max_chars: int = 6000
+    vector_db: str | None = None
 
 
 settings = Settings()
@@ -217,6 +229,46 @@ async def describe(
     already have an `_index.md`.
     """
     return operations.describe_directory(await _root(bundle_root, ctx), dir, description)
+
+
+@mcp.tool()
+async def search(
+    ctx: Context,
+    query: str,
+    top_k: int = 5,
+    dir: str | None = None,
+    bundle_root: str | None = None,
+) -> list[dict]:
+    """Find the `_index.md` files closest in meaning to a natural-language `query`.
+
+    Semantic search over directory indexes, to locate the right area of the
+    bundle when you do not know where something lives. Returns up to `top_k`
+    (1-20) hits `{dir, path, score, excerpt}`, best first; `dir` limits results
+    to that bundle-relative directory and below. Then go deeper: call
+    `read_index` / `list` / `get` on a hit's `dir`. Only indexes are searched,
+    not concept bodies. Needs OKF_EMBEDDING_URL and OKF_EMBEDDING_MODEL; the
+    first search after changes embeds the changed indexes, so it can be slower.
+    """
+    config = (
+        EmbeddingConfig(
+            url=settings.embedding_url,
+            model=settings.embedding_model,
+            api_key=settings.embedding_api_key,
+        )
+        if settings.embedding_url and settings.embedding_model
+        else None
+    )
+    root = await _root(bundle_root, ctx)
+    return await asyncio.to_thread(
+        operations.search_indexes,
+        root,
+        query,
+        top_k,
+        dir,
+        config=config,
+        max_chars=settings.embedding_max_chars,
+        db_path=settings.vector_db,
+    )
 
 
 def main() -> None:

@@ -828,3 +828,125 @@ def test_resolve_store_bundle_root_uri_store():
     assert mem.is_dir(folder)
     child.write_text("x.md", "1")
     assert mem.read_text(f"{folder}/x.md") == "1"
+
+
+# --- search_indexes ---------------------------------------------------------
+
+from okf_core import MemoryStorage  # noqa: E402
+
+from okf_mcp.embeddings import EmbeddingConfig, EmbeddingError  # noqa: E402
+from okf_mcp.vector_store import VectorStoreError  # noqa: E402
+
+_WORDS = ["alpha", "beta", "gamma", "delta"]
+
+
+def _search_vec(text):
+    v = [0.0] * len(_WORDS)
+    for i, w in enumerate(_WORDS):
+        if w in text:
+            v[i] = 1.0
+            return v
+    return [0.0, 0.0, 0.0, 1.0]
+
+
+class _SearchEmbedder:
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, texts):
+        self.calls.append(list(texts))
+        return [_search_vec(t) for t in texts]
+
+
+def _mem_bundle():
+    s = MemoryStorage()
+    s.write_text("tables/_index.md", "alpha tables")
+    s.write_text("views/_index.md", "beta views")
+    return s
+
+
+def _search(storage, query, tmp_path, emb, **kw):
+    kw.setdefault("config", EmbeddingConfig(url="http://h/v1", model="m"))
+    return operations.search_indexes(
+        storage, query, db_path=tmp_path / "v.db", embed=emb, **kw
+    )
+
+
+def test_search_returns_closest_index_first_with_read_index_shape(tmp_path):
+    hits = _search(_mem_bundle(), "beta please", tmp_path, _SearchEmbedder())
+    assert hits[0]["path"] == "views/_index.md"
+    assert hits[0]["dir"] == "views"
+    assert set(hits[0]) == {"dir", "path", "score", "excerpt"}
+
+
+def test_search_syncs_before_querying(tmp_path):
+    s, emb = _mem_bundle(), _SearchEmbedder()
+    _search(s, "gamma", tmp_path, emb)
+    s.write_text("later/_index.md", "gamma later")
+    hits = _search(s, "gamma", tmp_path, emb)
+    assert hits[0]["path"] == "later/_index.md"
+
+
+@pytest.mark.parametrize("query", ["", "   "])
+def test_search_rejects_blank_query_without_embedding(tmp_path, query):
+    emb = _SearchEmbedder()
+    with pytest.raises(ValueError):
+        _search(_mem_bundle(), query, tmp_path, emb)
+    assert emb.calls == []
+
+
+@pytest.mark.parametrize("top_k", [0, 21])
+def test_search_rejects_top_k_out_of_range(tmp_path, top_k):
+    with pytest.raises(ValueError):
+        _search(_mem_bundle(), "alpha", tmp_path, _SearchEmbedder(), top_k=top_k)
+
+
+def test_search_rejects_dir_escaping_bundle(tmp_path):
+    with pytest.raises(ValueError):
+        _search(_mem_bundle(), "alpha", tmp_path, _SearchEmbedder(), dir="../x")
+
+
+def test_search_errors_when_embedding_not_configured(tmp_path):
+    with pytest.raises(ValueError, match="OKF_EMBEDDING_URL.*OKF_EMBEDDING_MODEL"):
+        operations.search_indexes(
+            _mem_bundle(), "alpha", config=None, db_path=tmp_path / "v.db"
+        )
+
+
+def test_search_raises_when_embedder_fails(tmp_path):
+    def boom(texts):
+        raise EmbeddingError("down")
+
+    with pytest.raises(EmbeddingError):
+        _search(_mem_bundle(), "alpha", tmp_path, boom)
+
+
+def test_search_on_non_local_storage_requires_db_path():
+    with pytest.raises(VectorStoreError, match="OKF_VECTOR_DB"):
+        operations.search_indexes(
+            _mem_bundle(),
+            "alpha",
+            config=EmbeddingConfig(url="http://h/v1", model="m"),
+            embed=_SearchEmbedder(),
+        )
+
+
+def test_search_on_empty_bundle_returns_empty_list(tmp_path):
+    assert _search(MemoryStorage(), "alpha", tmp_path, _SearchEmbedder()) == []
+
+
+def test_write_tools_never_touch_embedder_or_vector_file(tmp_path, monkeypatch):
+    def forbidden(*a, **k):
+        raise AssertionError("write tool contacted the embedding server")
+
+    monkeypatch.setattr("okf_mcp.embeddings.embed_texts", forbidden)
+    root = tmp_path / "bundle"
+    root.mkdir()
+    fm = {"type": "Table", "title": "Orders", "description": "d"}
+    operations.add_concept(root, "tables/orders", fm, "body")
+    operations.patch_concept(root, "tables/orders", {"title": "Orders2"}, None)
+    operations.move_concept(root, "tables/orders", "models/orders")
+    operations.describe_directory(root, "models", "Models")
+    operations.reindex_bundle(root)
+    operations.delete_concept(root, "models/orders", False)
+    assert not (tmp_path / "bundle.vectors.db").exists()
