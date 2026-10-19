@@ -54,6 +54,16 @@ bundle). Setting **both** `OKF_STORE_ROOT` and `OKF_BUNDLE_ROOT` is an error
 (`set OKF_STORE_ROOT or OKF_BUNDLE_ROOT, not both`). `OKF_STORE_ROOT` must be an
 existing directory.
 
+### Storage backends
+
+`OKF_BUNDLE_ROOT`, `OKF_STORE_ROOT`, and the per-call `bundle_root` accept a
+**location**: a plain path or `file://` URI uses the local filesystem (the
+default); any other `scheme://` is resolved through `okf_core`'s storage-backend
+registry (a backend package registers itself via the `okf_core.storage`
+entry-point group). In store mode the per-project folder is created under the
+store on whatever backend it points at. Write tools hold the storage's lock for
+the whole operation. See `okf_core.Storage`.
+
 ## Setup (stdio)
 
 `main()` calls `mcp.run()`, which uses the **stdio** transport: the client

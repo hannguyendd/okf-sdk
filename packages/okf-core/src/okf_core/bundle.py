@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import posixpath
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from okf_core.constants import RESERVED_FILENAMES
 from okf_core.document import OKFDocument, OKFDocumentError
+from okf_core.links import _dir_key, _resolve_target_id
+from okf_core.storage import Storage, is_uri, open_storage
 
 _LINK_RE = re.compile(r"\]\(([^)\s]+\.md)(?:#[A-Za-z0-9_\-]*)?\)")
 
@@ -28,26 +31,19 @@ def extract_links(body: str, doc_dir: Path, bundle_root: Path) -> list[str]:
         "[a](a.md) [b](b.md) [a](a.md)"  -> ["topics/a",        # deduped, ordered
                                             "topics/b"]
     """
+    return extract_link_ids(body, _dir_key(doc_dir, bundle_root))
+
+
+def extract_link_ids(body: str, doc_dir: str) -> list[str]:
+    """Path-free core of :func:`extract_links`.
+
+    ``doc_dir`` is the document's bundle-relative directory key (``""`` for the
+    root); same resolution, skip, and dedupe rules.
+    """
     out: list[str] = []
     seen: set[str] = set()
-    bundle_root_resolved = bundle_root.resolve()
     for m in _LINK_RE.finditer(body):
-        target = m.group(1)
-        if "://" in target:
-            continue
-        if target.startswith("/"):
-            base = bundle_root_resolved
-            rel_target = target.lstrip("/")
-        else:
-            base = doc_dir
-            rel_target = target
-        try:
-            resolved = (base / rel_target).resolve().relative_to(bundle_root_resolved)
-        except ValueError:
-            continue
-        rel = resolved.as_posix()
-        if rel.endswith(".md"):
-            rel = rel[:-3]
+        rel = _resolve_target_id(m.group(1), doc_dir)
         if rel and rel not in seen:
             seen.add(rel)
             out.append(rel)
@@ -90,30 +86,33 @@ class Concept:
 
 @dataclass
 class Bundle:
-    root: Path
+    """A loaded bundle. ``root`` is whatever it was loaded from (path or storage);
+    ``storage`` is the resolved backend."""
+
+    root: Path | str | Storage
     concepts: list[Concept] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self._by_id: dict[str, Concept] = {c.id: c for c in self.concepts}
+        self.storage: Storage = open_storage(self.root)
 
     @classmethod
-    def load(cls, root: Path | str) -> "Bundle":
-        root = Path(root)
-        if not root.is_dir():
-            raise FileNotFoundError(f"Bundle directory not found: {root}")
+    def load(cls, root: "Path | str | Storage") -> "Bundle":
+        storage = open_storage(root)
+        if not storage.is_dir(""):
+            raise FileNotFoundError(f"Bundle directory not found: {storage.location}")
         concepts: list[Concept] = []
-        for md_path in sorted(root.rglob("*.md")):
-            if md_path.name in RESERVED_FILENAMES:
+        for key in storage.iter_files(suffix=".md"):
+            if posixpath.basename(key) in RESERVED_FILENAMES:
                 continue
-            rel = md_path.relative_to(root).with_suffix("")
-            concept_id = "/".join(rel.parts)
             try:
-                doc = OKFDocument.parse(md_path.read_text(encoding="utf-8"))
-            except OKFDocumentError:
+                doc = OKFDocument.parse(storage.read_text(key))
+            except (OKFDocumentError, UnicodeDecodeError):
                 continue
-            links = extract_links(doc.body or "", md_path.parent, root)
-            concepts.append(Concept(id=concept_id, document=doc, links_to=links))
-        return cls(root=root, concepts=concepts)
+            links = extract_link_ids(doc.body or "", posixpath.dirname(key))
+            concepts.append(Concept(id=key[:-3], document=doc, links_to=links))
+        keep = Path(root) if isinstance(root, (str, Path)) and not is_uri(root) else storage
+        return cls(root=keep, concepts=concepts)
 
     def get(self, concept_id: str) -> Concept | None:
         return self._by_id.get(concept_id)

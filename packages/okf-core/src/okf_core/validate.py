@@ -22,6 +22,7 @@ from typing import Any
 import yaml
 
 from okf_core.constants import INDEX_FILENAME, LOG_FILENAME
+from okf_core.storage import Storage, open_storage
 
 _FRONTMATTER_DELIM = "---"
 
@@ -145,26 +146,26 @@ def _check_log(rel: str, text: str) -> list[Violation]:
     return out
 
 
-def validate_bundle(root: Path | str) -> list[Violation]:
+def validate_bundle(root: Path | str | Storage) -> list[Violation]:
     """Return every MUST / MUST NOT violation in the bundle at ``root``.
 
     An empty list means the bundle is conformant with OKF v0.1. Raises
     ``FileNotFoundError`` if ``root`` is not a directory.
     """
-    root = Path(root)
-    if not root.is_dir():
-        raise FileNotFoundError(f"Bundle directory not found: {root}")
+    storage = open_storage(root)
+    if not storage.is_dir(""):
+        raise FileNotFoundError(f"Bundle directory not found: {storage.location}")
     violations: list[Violation] = []
-    for md_path in sorted(root.rglob("*.md")):
-        rel = md_path.relative_to(root).as_posix()
+    for rel in storage.iter_files(suffix=".md"):
+        name = rel.rsplit("/", 1)[-1]
         try:
-            text = md_path.read_bytes().decode("utf-8")
+            text = storage.read_text(rel)
         except UnicodeDecodeError:
             violations.append(Violation("DOC-01", rel, "file is not valid UTF-8"))
             continue
-        if md_path.name == INDEX_FILENAME:
+        if name == INDEX_FILENAME:
             violations.extend(_check_index(rel, text, is_root=rel == INDEX_FILENAME))
-        elif md_path.name == LOG_FILENAME:
+        elif name == LOG_FILENAME:
             violations.extend(_check_log(rel, text))
         else:
             violations.extend(_check_concept(rel, text))

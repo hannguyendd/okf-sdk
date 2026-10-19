@@ -12,6 +12,13 @@ A self-contained, hierarchical collection of knowledge documents. The unit of
 distribution. The on-disk form of an index.
 _Avoid_: Repo, package, corpus
 
+**Storage**:
+The interface through which a bundle's files are read and written, so a bundle
+can live on a local disk or another backend (object store, remote git,
+database). Addressed by bundle-relative keys; the local filesystem is the
+default backend.
+_Avoid_: Filesystem, disk, backend (as the name of the interface)
+
 **Workspace**:
 A named, git-repo-shaped directory at `~/.okf/workspaces/<name>` (the `.okf`
 home is overridable via `OKF_HOME`) that holds one or more indexes. The unit git

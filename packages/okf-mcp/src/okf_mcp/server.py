@@ -7,6 +7,7 @@ from typing import Any
 from urllib.parse import urlparse
 from urllib.request import url2pathname
 
+from okf_core import Storage
 from mcp.server.fastmcp import Context, FastMCP
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -18,8 +19,10 @@ class Settings(BaseSettings):
         env_prefix="OKF_", env_file=".env", extra="ignore"
     )
 
-    bundle_root: Path | None = None
-    store_root: Path | None = None
+    # Locations: a local path, or a ``scheme://`` URI for a registered storage
+    # backend (see ``okf_core.open_storage``). Kept as ``str`` so URIs survive.
+    bundle_root: str | None = None
+    store_root: str | None = None
 
 
 settings = Settings()
@@ -54,13 +57,14 @@ async def _project_root(ctx: Context) -> Path:
     return Path.cwd()
 
 
-async def _root(bundle_root: str | None, ctx: Context) -> Path:
+async def _root(bundle_root: str | None, ctx: Context) -> Path | Storage:
     """Resolve the effective bundle root for a tool call.
 
     Precedence: an explicit ``bundle_root`` arg wins; otherwise store mode
     (``OKF_STORE_ROOT``) partitions per project into ``<store_root>/<project-folder>``;
     otherwise the legacy single bundle (``OKF_BUNDLE_ROOT``). Setting both env
-    roots (with no arg) is an error.
+    roots (with no arg) is an error. Each is a local path or a ``scheme://``
+    storage location; local paths resolve to ``Path`` and others to ``Storage``.
     """
     if bundle_root:
         return operations.resolve_bundle_root(bundle_root, None)

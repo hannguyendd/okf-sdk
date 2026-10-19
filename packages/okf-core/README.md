@@ -15,6 +15,13 @@ It can:
   (`validate_bundle`, or `python -m okf_core.validate <bundle>`); see
   [CONFORMANCE.md](CONFORMANCE.md).
 
+All file access goes through a `Storage` interface (`okf_core.storage`), so a
+bundle can live somewhere other than a local disk: `Bundle.load`,
+`regenerate_indexes`, and `validate_bundle` accept a path, a `Storage`, or a
+location string. `LocalStorage` (default) and `MemoryStorage` ship in core;
+other backends register via `register_backend` or the `okf_core.storage`
+entry-point group and stay optional extras (core depends only on PyYAML).
+
 It does **not** produce bundles (no data-source ingestion, web crawling, agent,
 or LLM calls) and ships no UI. Its only runtime dependency is PyYAML.
 

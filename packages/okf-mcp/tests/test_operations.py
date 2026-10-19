@@ -1,7 +1,7 @@
 import re
 
 import pytest
-from okf_core import OKFDocument
+from okf_core import LocalStorage, OKFDocument
 
 from okf_mcp import operations
 
@@ -28,26 +28,23 @@ def test_resolve_rejects_non_directory(tmp_path):
         operations.resolve_bundle_root(str(f), None)
 
 
-def test_concept_path_builds_nested_path(tmp_path):
-    assert (
-        operations._concept_path(tmp_path, "tables/orders")
-        == tmp_path / "tables" / "orders.md"
-    )
+def test_concept_key_builds_nested_key():
+    assert operations._concept_key("tables/orders") == "tables/orders.md"
 
 
-def test_concept_path_rejects_reserved(tmp_path):
+def test_concept_key_rejects_reserved():
     with pytest.raises(ValueError):
-        operations._concept_path(tmp_path, "tables/_index")
+        operations._concept_key("tables/_index")
 
 
-def test_concept_path_rejects_bad_segment(tmp_path):
+def test_concept_key_rejects_bad_segment():
     with pytest.raises(ValueError):
-        operations._concept_path(tmp_path, "tables/bad name")
+        operations._concept_key("tables/bad name")
 
 
 def test_append_log_creates_file(tmp_path):
     log = tmp_path / "_log.md"
-    operations._append_log(log, "* **Creation**: Added [A](a.md).", "2026-06-29")
+    operations._append_log(LocalStorage(tmp_path), "_log.md", "* **Creation**: Added [A](a.md).", "2026-06-29")
     text = log.read_text()
     assert "# Update Log" in text
     assert "## 2026-06-29" in text
@@ -57,7 +54,7 @@ def test_append_log_creates_file(tmp_path):
 def test_append_log_prepends_under_existing_today(tmp_path):
     log = tmp_path / "_log.md"
     log.write_text("# Update Log\n\n## 2026-06-29\n* **Creation**: Added [A](a.md).\n")
-    operations._append_log(log, "* **Update**: Updated [B](b.md).", "2026-06-29")
+    operations._append_log(LocalStorage(tmp_path), "_log.md", "* **Update**: Updated [B](b.md).", "2026-06-29")
     lines = log.read_text().splitlines()
     i = lines.index("## 2026-06-29")
     assert lines[i + 1] == "* **Update**: Updated [B](b.md)."  # newest first
@@ -67,7 +64,7 @@ def test_append_log_prepends_under_existing_today(tmp_path):
 def test_append_log_inserts_new_today_above_older(tmp_path):
     log = tmp_path / "_log.md"
     log.write_text("# Update Log\n\n## 2026-06-01\n* **Creation**: Added [A](a.md).\n")
-    operations._append_log(log, "* **Update**: Updated [A](a.md).", "2026-06-29")
+    operations._append_log(LocalStorage(tmp_path), "_log.md", "* **Update**: Updated [A](a.md).", "2026-06-29")
     lines = log.read_text().splitlines()
     assert lines.index("## 2026-06-29") < lines.index("## 2026-06-01")
 
@@ -748,3 +745,86 @@ def test_resolve_store_bundle_root_rejects_file_store(tmp_path):
     f.write_text("x")
     with pytest.raises(ValueError):
         operations.resolve_store_bundle_root(f, tmp_path / "web-app")
+
+
+# ---- storage backends ------------------------------------------------------
+
+from okf_core import MemoryStorage, register_backend  # noqa: E402
+
+
+def _flow(root):
+    """add/patch/move/delete/describe/read_index/list/reindex on any root."""
+    operations.add_concept(root, "t/a", {"type": "Table", "title": "A"}, "see [b](b.md)")
+    operations.add_concept(root, "t/b", {"type": "Table", "title": "B"}, "x")
+    operations.patch_concept(root, "t/b", {"title": "B2"}, None)
+    mv = operations.move_concept(root, "t/b", "u/b")
+    assert mv["relinked"] == ["t/a"]
+    assert operations.get_concept(root, "t/a")["links_to"] == ["u/b"]
+    assert operations.delete_concept(root, "u/b")["action"] == "blocked"
+    operations.describe_directory(root, "u", "Moved things")
+    idx = operations.read_index(root, None, 2)
+    assert [i["dir"] for i in idx] == ["", "t", "u"]
+    assert [c["id"] for c in operations.list_concepts(root)] == ["t/a", "u/b"]
+    done = operations.delete_concept(root, "u/b", force=True)
+    assert done["unlinked"] == ["t/a"]
+    return operations.reindex_bundle(root)
+
+
+def test_operations_run_on_memory_storage_with_parity(tmp_path):
+    mem, local = MemoryStorage(), LocalStorage(tmp_path)
+    r_mem, r_local = _flow(mem), _flow(local)
+    assert r_mem["indexes"] == r_local["indexes"]
+    for key in r_local["indexes"]:
+        assert mem.read_text(key) == local.read_text(key)
+    assert mem.exists("t/_log.md") and local.exists("t/_log.md")
+
+
+def test_write_operations_hold_the_storage_lock():
+    held = []
+
+    class Spy(MemoryStorage):
+        def lock(self):
+            held.append(1)
+            return super().lock()
+
+    spy = Spy()
+    operations.add_concept(spy, "a", {"type": "T"}, "")
+    operations.patch_concept(spy, "a", {"title": "x"}, None)
+    operations.move_concept(spy, "a", "b")
+    operations.describe_directory(spy, "", "d")
+    operations.delete_concept(spy, "b")
+    operations.reindex_bundle(spy)
+    assert len(held) == 6
+
+
+def test_read_index_rejects_escape_on_storage():
+    with pytest.raises(ValueError, match="escapes"):
+        operations.read_index(MemoryStorage(), "../x")
+
+
+def test_resolve_bundle_root_uri_returns_storage():
+    mem = MemoryStorage()
+    mem.mkdir("")
+    register_backend("opsmem", lambda loc: mem)
+    assert operations.resolve_bundle_root("opsmem://b", None) is mem
+
+
+def test_resolve_bundle_root_uri_requires_directory():
+    register_backend("opsmissing", lambda loc: MemoryStorage().child("nope"))
+    with pytest.raises(ValueError, match="not a directory"):
+        operations.resolve_bundle_root("opsmissing://b", None)
+
+
+def test_resolve_bundle_root_file_uri(tmp_path):
+    assert operations.resolve_bundle_root(tmp_path.as_uri(), None) == tmp_path.resolve()
+
+
+def test_resolve_store_bundle_root_uri_store():
+    mem = MemoryStorage()
+    mem.mkdir("")
+    register_backend("opsstore", lambda loc: mem)
+    child = operations.resolve_store_bundle_root("opsstore://s", "/home/me/web-app")
+    folder = operations.derive_project_folder("/home/me/web-app")
+    assert mem.is_dir(folder)
+    child.write_text("x.md", "1")
+    assert mem.read_text(f"{folder}/x.md") == "1"

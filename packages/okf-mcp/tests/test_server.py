@@ -1,3 +1,4 @@
+from pathlib import Path
 import asyncio
 from types import SimpleNamespace
 
@@ -69,13 +70,13 @@ def test_settings_reads_dotenv(tmp_path, monkeypatch):
     target.mkdir()
     (tmp_path / ".env").write_text(f"OKF_BUNDLE_ROOT={target}\n")
     monkeypatch.chdir(tmp_path)
-    assert Settings().bundle_root == target
+    assert Path(Settings().bundle_root) == target
 
 
 def test_settings_reads_store_root(tmp_path, monkeypatch):
     monkeypatch.delenv("OKF_BUNDLE_ROOT", raising=False)
     monkeypatch.setenv("OKF_STORE_ROOT", str(tmp_path))
-    assert Settings(_env_file=None).store_root == tmp_path
+    assert Path(Settings(_env_file=None).store_root) == tmp_path
 
 
 def test_root_prefers_explicit_arg(tmp_path, monkeypatch):

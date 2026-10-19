@@ -1,19 +1,21 @@
 from __future__ import annotations
 
+import posixpath
 from collections import defaultdict
 from pathlib import Path
-from typing import Callable
+from typing import Callable, overload
 
 from okf_core.constants import INDEX_FILENAME, RESERVED_FILENAMES
 from okf_core.document import OKFDocument
+from okf_core.storage import Storage, open_storage
 from okf_core.synthesizer import fallback_synthesizer
 
 Synthesizer = Callable[[str, list[tuple[str, str]]], str]
 
 
-def _load_doc(path: Path) -> OKFDocument | None:
+def _load_doc(storage: Storage, key: str) -> OKFDocument | None:
     try:
-        return OKFDocument.parse(path.read_text(encoding="utf-8"))
+        return OKFDocument.parse(storage.read_text(key))
     except Exception:
         return None
 
@@ -48,68 +50,93 @@ def _doc_tags(frontmatter: dict) -> list[str]:
     return [str(t) for t in raw]
 
 
-def _read_index_frontmatter(index_path: Path) -> dict:
+def _read_index_frontmatter(storage: Storage, index_key: str) -> dict:
     """Return an existing ``_index.md``'s frontmatter, or ``{}`` if none/unparseable."""
-    if not index_path.is_file():
-        return {}
-    try:
-        return (
-            OKFDocument.parse(index_path.read_text(encoding="utf-8")).frontmatter or {}
-        )
-    except Exception:
-        return {}
+    doc = _load_doc(storage, index_key)
+    return (doc.frontmatter if doc else None) or {}
 
 
-def _directories_to_index(bundle_root: Path) -> list[Path]:
-    dirs: set[Path] = set()
-    for md in bundle_root.rglob("*.md"):
-        cur = md.parent
-        while cur != bundle_root.parent:
+def _directories_to_index(storage: Storage) -> list[str]:
+    """Directory keys (``""`` = root) that contain a ``.md`` file at any depth."""
+    dirs: set[str] = set()
+    for key in storage.iter_files(suffix=".md"):
+        cur = posixpath.dirname(key)
+        while True:
             dirs.add(cur)
-            if cur == bundle_root:
+            if not cur:
                 break
-            cur = cur.parent
+            cur = posixpath.dirname(cur)
     return sorted(dirs)
 
 
+def _depth(key: str) -> int:
+    return len(key.split("/")) if key else 0
+
+
+@overload
 def regenerate_indexes(
-    bundle_root: Path | str,
+    bundle_root: Storage, *, synthesize: Synthesizer = ...
+) -> list[str]: ...
+@overload
+def regenerate_indexes(
+    bundle_root: Path | str, *, synthesize: Synthesizer = ...
+) -> list[Path]: ...
+
+
+def regenerate_indexes(
+    bundle_root: Path | str | Storage,
     *,
     synthesize: Synthesizer = fallback_synthesizer,
-) -> list[Path]:
-    bundle_root = Path(bundle_root)
-    written: list[Path] = []
-    if not bundle_root.exists():
+) -> list[Path] | list[str]:
+    """Regenerate every ``_index.md`` under the bundle and return the ones written.
+
+    For a ``Storage`` argument the result is bundle-relative key strings; for a
+    ``Path``/``str`` root it is absolute ``Path`` s (the original behaviour).
+    """
+    storage = open_storage(bundle_root)
+    keys = _regenerate(storage, synthesize)
+    if isinstance(bundle_root, Storage):
+        return keys
+    root = getattr(storage, "root", None)
+    if root is None:  # a URI scheme that is not a path: keep keys
+        return keys
+    return [root / k for k in keys]
+
+
+def _regenerate(storage: Storage, synthesize: Synthesizer) -> list[str]:
+    written: list[str] = []
+    if not storage.is_dir(""):
         return written
 
     directories = sorted(
-        _directories_to_index(bundle_root),
-        key=lambda p: (-len(p.relative_to(bundle_root).parts), str(p)),
+        _directories_to_index(storage), key=lambda d: (-_depth(d), d)
     )
 
-    dir_descriptions: dict[Path, str] = {}
+    dir_descriptions: dict[str, str] = {}
 
     for directory in directories:
-        index_path = directory / INDEX_FILENAME
-        existing_fm = _read_index_frontmatter(index_path)
+        index_key = posixpath.join(directory, INDEX_FILENAME)
+        existing_fm = _read_index_frontmatter(storage, index_key)
         authored = str(existing_fm.get("description") or "").strip()
 
         entries: list[tuple[str, str, str, str, list[str]]] = []
 
-        for child in sorted(directory.iterdir()):
+        for child in storage.list_dir(directory):
             if child.name in RESERVED_FILENAMES:
                 continue
-            if child.is_file() and child.suffix == ".md":
-                doc = _load_doc(child)
+            child_key = posixpath.join(directory, child.name)
+            if not child.is_dir and child.name.endswith(".md"):
+                doc = _load_doc(storage, child_key)
                 if doc is None:
                     continue
                 fm = doc.frontmatter
-                title = str(fm.get("title") or child.stem)
+                stem = child.name[:-3]
+                title = str(fm.get("title") or stem)
                 desc = str(fm.get("description") or "")
                 typ = str(fm.get("type") or "")
                 entries.append((typ, title, child.name, desc, _doc_tags(fm)))
-            elif child.is_dir():
-                desc = dir_descriptions.get(child, "")
+            elif child.is_dir:
+                desc = dir_descriptions.get(child_key, "")
                 entries.append(
                     (
                         "Subdirectories",
@@ -126,7 +153,7 @@ def regenerate_indexes(
         # Preserve only allowlisted frontmatter: description (any level) and
         # okf_version (bundle root only). Anything else is dropped (self-healing).
         kept_fm: dict = {}
-        if directory == bundle_root and existing_fm.get("okf_version"):
+        if not directory and existing_fm.get("okf_version"):
             kept_fm["okf_version"] = existing_fm["okf_version"]
         if authored:
             kept_fm["description"] = authored
@@ -135,10 +162,10 @@ def regenerate_indexes(
         text = (
             OKFDocument(frontmatter=kept_fm, body=body).serialize() if kept_fm else body
         )
-        index_path.write_text(text, encoding="utf-8")
-        written.append(index_path)
+        storage.write_text(index_key, text)
+        written.append(index_key)
 
-        if directory == bundle_root:
+        if not directory:
             continue
 
         # Caption shown in the parent's listing: authored description wins,
@@ -146,8 +173,7 @@ def regenerate_indexes(
         if authored:
             dir_descriptions[directory] = authored
         else:
-            rel = str(directory.relative_to(bundle_root))
             pairs = [(title, desc) for _, title, _, desc, _ in entries]
-            dir_descriptions[directory] = synthesize(rel, pairs)
+            dir_descriptions[directory] = synthesize(directory, pairs)
 
     return written
