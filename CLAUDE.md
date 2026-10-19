@@ -31,6 +31,16 @@ MCP `roots` capability, cwd fallback); setting both env vars is an error. See
 `docs/superpowers/specs/2026-07-20-okf-mcp-store-mode-design.md`, and
 `docs/superpowers/plans/2026-06-29-okf-mcp-producer.md`.
 
+**Storage.** All file access in both packages goes through the
+`okf_core.Storage` interface (`read_text`/`write_text`/`delete`/`move`/
+`list_dir`/`iter_files`/`mkdir`/`lock`, bundle-relative POSIX keys).
+`LocalStorage` is the default, `MemoryStorage` the test double; other backends
+plug in via `register_backend` or the `okf_core.storage` entry-point group
+(optional extras — core stays PyYAML-only). `OKF_BUNDLE_ROOT` /
+`OKF_STORE_ROOT` / `bundle_root` accept a path or a `scheme://` location. Don't
+do `pathlib` I/O on bundle files directly; go through a `Storage`. See
+`docs/superpowers/specs/2026-10-19-okf-storage-interface-design.md`.
+
 ## Tooling
 
 This is a [uv](https://docs.astral.sh/uv/)-managed workspace targeting Python 3.12 (pinned in `.python-version`). The shared `.venv`, lockfile (`uv.lock`), and dev dependency group live at the root; each member package carries its own `[project]` metadata.

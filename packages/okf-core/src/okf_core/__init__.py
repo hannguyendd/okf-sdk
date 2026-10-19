@@ -1,7 +1,7 @@
 """okf_core — read and index Open Knowledge Format (OKF) bundles."""
 from __future__ import annotations
 
-from okf_core.bundle import Bundle, Concept, extract_links
+from okf_core.bundle import Bundle, Concept, extract_link_ids, extract_links
 from okf_core.constants import (
     INDEX_FILENAME,
     INDEX_STEM,
@@ -16,11 +16,19 @@ from okf_core.document import (
     OKFDocumentError,
 )
 from okf_core.index import regenerate_indexes
-from okf_core.links import rewrite_links, strip_links
+from okf_core.links import rewrite_link_ids, rewrite_links, strip_link_ids, strip_links
 from okf_core.paths import (
     concept_id_to_path,
     parse_concept_id,
     path_to_concept_id,
+)
+from okf_core.storage import (
+    Entry,
+    LocalStorage,
+    MemoryStorage,
+    Storage,
+    open_storage,
+    register_backend,
 )
 from okf_core.synthesizer import fallback_synthesizer
 
@@ -30,8 +38,17 @@ __all__ = [
     "Bundle",
     "Concept",
     "extract_links",
+    "extract_link_ids",
     "rewrite_links",
+    "rewrite_link_ids",
     "strip_links",
+    "strip_link_ids",
+    "Storage",
+    "Entry",
+    "LocalStorage",
+    "MemoryStorage",
+    "open_storage",
+    "register_backend",
     "OKFDocument",
     "OKFDocumentError",
     "REQUIRED_FRONTMATTER_KEYS",

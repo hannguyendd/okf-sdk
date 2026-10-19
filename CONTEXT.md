@@ -12,6 +12,13 @@ A self-contained, hierarchical collection of knowledge documents. The unit of
 distribution.
 _Avoid_: Repo, package, corpus
 
+**Storage**:
+The interface through which a bundle's files are read and written, so a bundle
+can live on a local disk or another backend (object store, remote git,
+database). Addressed by bundle-relative keys; the local filesystem is the
+default backend.
+_Avoid_: Filesystem, disk, backend (as the name of the interface)
+
 **Concept**:
 A single unit of knowledge, represented as exactly one markdown document.
 _Avoid_: Document, entry, node

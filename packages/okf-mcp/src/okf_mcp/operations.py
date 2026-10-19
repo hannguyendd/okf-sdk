@@ -1,8 +1,14 @@
-"""Producer operations over an OKF bundle (framework-agnostic)."""
+"""Producer operations over an OKF bundle (framework-agnostic).
+
+Every operation takes ``bundle_root`` as a ``Path``, location string, or
+``okf_core.Storage`` and does all I/O through the storage interface; write
+operations hold ``storage.lock()`` for their whole duration.
+"""
 
 from __future__ import annotations
 
 import hashlib
+import posixpath
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,24 +19,35 @@ from okf_core import (
     RESERVED_STEMS,
     Bundle,
     OKFDocument,
-    concept_id_to_path,
-    extract_links,
+    Storage,
+    extract_link_ids,
+    open_storage,
     parse_concept_id,
     regenerate_indexes,
-    rewrite_links,
-    strip_links,
+    rewrite_link_ids,
+    strip_link_ids,
 )
+from okf_core.storage import is_uri
 
 
-def resolve_bundle_root(arg: str | None, env_default: Path | None) -> Path:
+def resolve_bundle_root(
+    arg: "str | Path | None", env_default: "str | Path | None"
+) -> "Path | Storage":
     """Resolve the bundle root from a call arg, falling back to the env default.
 
-    Raises ``ValueError`` when neither is set or the path is not a directory.
+    A plain path resolves to an absolute ``Path`` (must be a directory); a
+    ``scheme://`` location resolves to a ``Storage`` via ``open_storage``.
+    Raises ``ValueError`` when neither is set or the root is not a directory.
     """
     chosen = arg or env_default
     if not chosen:
         raise ValueError("no bundle root: pass bundle_root or set OKF_BUNDLE_ROOT")
-    root = Path(chosen).resolve()
+    if is_uri(chosen) and not str(chosen).startswith("file://"):
+        storage = open_storage(chosen)
+        if not storage.is_dir(""):
+            raise ValueError(f"bundle root is not a directory: {storage.location}")
+        return storage
+    root = open_storage(chosen).root  # type: ignore[attr-defined]
     if not root.is_dir():
         raise ValueError(f"bundle root is not a directory: {root}")
     return root
@@ -59,28 +76,53 @@ def derive_project_folder(project_path: str | Path) -> str:
 
 
 def resolve_store_bundle_root(
-    store_root: str | Path, project_path: str | Path
-) -> Path:
+    store_root: "str | Path", project_path: str | Path
+) -> "Path | Storage":
     """Resolve ``<store_root>/<derive_project_folder(project_path)>``.
 
     Requires ``store_root`` to be an existing directory (fail fast on a misconfigured
     ``OKF_STORE_ROOT``); auto-creates the per-project subfolder on first use.
+    A plain path yields a ``Path``; a ``scheme://`` store yields a ``Storage``.
     """
-    store = Path(store_root).resolve()
-    if not store.is_dir():
-        raise ValueError(f"store root is not a directory: {store}")
-    root = store / derive_project_folder(project_path)
-    root.mkdir(parents=True, exist_ok=True)
-    return root
+    store = open_storage(store_root)
+    if not store.is_dir(""):
+        raise ValueError(f"store root is not a directory: {store.location}")
+    child = store.child(derive_project_folder(project_path))
+    child.mkdir("")
+    return child.root if hasattr(child, "root") else child  # type: ignore[attr-defined]
 
 
-def _concept_path(bundle_root: Path, concept_id: str) -> Path:
+def _concept_key(concept_id: str) -> str:
     parts = parse_concept_id(concept_id)
     if parts[-1] in RESERVED_STEMS:
         raise ValueError(
             f"concept_id {concept_id!r} collides with a reserved file name"
         )
-    return concept_id_to_path(bundle_root, parts)
+    return "/".join(parts) + ".md"
+
+
+def _id_of(key: str) -> str:
+    return key.removesuffix(".md")
+
+
+def _dir_of(key: str) -> str:
+    return posixpath.dirname(key)
+
+
+def _name_of(key: str) -> str:
+    return posixpath.basename(key)
+
+
+def _clean_dir(dir: str | None) -> str:
+    """Normalize a bundle-relative directory arg to a key; reject escapes."""
+    if not dir:
+        return ""
+    norm = posixpath.normpath(dir)
+    if norm == ".":
+        return ""
+    if norm.startswith("/") or norm == ".." or norm.startswith("../"):
+        raise ValueError(f"dir escapes the bundle root: {dir}")
+    return norm
 
 
 def _now_utc() -> datetime:
@@ -99,18 +141,18 @@ def _utc_time(dt: datetime) -> str:
     return dt.strftime("%H:%M:%S") + "Z"
 
 
-def _append_log(log_path: Path, entry: str, today: str) -> None:
-    """Append ``entry`` under a ``## <today>`` group in ``log_path`` (newest-first).
+def _append_log(storage: Storage, log_key: str, entry: str, today: str) -> None:
+    """Append ``entry`` under a ``## <today>`` group in ``log_key`` (newest-first).
 
     Creates the file with a ``# Update Log`` title when absent; prepends the
     entry under an existing today group; otherwise inserts a new today group
     above older date groups.
     """
     heading = f"## {today}"
-    if not log_path.exists():
-        log_path.write_text(f"# Update Log\n\n{heading}\n{entry}\n", encoding="utf-8")
+    if not storage.exists(log_key):
+        storage.write_text(log_key, f"# Update Log\n\n{heading}\n{entry}\n")
         return
-    lines = log_path.read_text(encoding="utf-8").splitlines()
+    lines = storage.read_text(log_key).splitlines()
     first_h2 = next((i for i, ln in enumerate(lines) if ln.startswith("## ")), None)
     if first_h2 is not None and lines[first_h2].strip() == heading:
         new_lines = lines[: first_h2 + 1] + [entry] + lines[first_h2 + 1 :]
@@ -118,111 +160,114 @@ def _append_log(log_path: Path, entry: str, today: str) -> None:
         new_lines = lines[:first_h2] + [heading, entry, ""] + lines[first_h2:]
     else:
         new_lines = lines + ["", heading, entry]
-    log_path.write_text("\n".join(new_lines).rstrip() + "\n", encoding="utf-8")
+    storage.write_text(log_key, "\n".join(new_lines).rstrip() + "\n")
 
 
-def _append_log_for(concept_path: Path, label: str, action: str, verb: str) -> Path:
-    log_path = concept_path.parent / LOG_FILENAME
+def _log_key(directory_key: str) -> str:
+    return posixpath.join(directory_key, LOG_FILENAME)
+
+
+def _append_log_for(
+    storage: Storage, concept_key: str, label: str, action: str, verb: str
+) -> str:
+    log_key = _log_key(_dir_of(concept_key))
     dt = _now_utc()
     entry = (
-        f"* **{_utc_time(dt)}** **{action}**: {verb} [{label}]({concept_path.name})."
+        f"* **{_utc_time(dt)}** **{action}**: {verb} [{label}]({_name_of(concept_key)})."
     )
-    _append_log(log_path, entry, _utc_date(dt))
-    return log_path
+    _append_log(storage, log_key, entry, _utc_date(dt))
+    return log_key
 
 
 def _summary(
-    bundle_root: Path,
     concept_id: str,
-    path: Path,
+    key: str,
     action: str,
-    log_path: Path,
-    indexes: list[Path],
+    log_key: str,
+    indexes: list[str],
 ) -> dict:
     return {
         "concept_id": concept_id,
-        "path": path.relative_to(bundle_root).as_posix(),
+        "path": key,
         "action": action,
-        "log": log_path.relative_to(bundle_root).as_posix(),
-        "indexes": [Path(p).relative_to(bundle_root).as_posix() for p in indexes],
+        "log": log_key,
+        "indexes": list(indexes),
     }
 
 
 def add_concept(
-    bundle_root: Path, concept_id: str, frontmatter: dict, body: str
+    bundle_root: "Path | str | Storage", concept_id: str, frontmatter: dict, body: str
 ) -> dict:
     """Create a new concept document, then reindex and log the creation."""
-    path = _concept_path(bundle_root, concept_id)
-    if path.exists():
-        raise ValueError(f"concept already exists: {concept_id}")
+    storage = open_storage(bundle_root)
+    key = _concept_key(concept_id)
     fm = dict(frontmatter or {})
     type_val = fm.get("type")
-    if not isinstance(type_val, str) or not type_val.strip():
-        raise ValueError("frontmatter must include a non-empty string 'type'")
-    if not fm.get("timestamp"):
-        fm["timestamp"] = _now_iso()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        OKFDocument(frontmatter=fm, body=body or "").serialize(), encoding="utf-8"
-    )
-    label = str(fm.get("title") or path.stem)
-    log_path = _append_log_for(path, label, "Creation", "Added")
-    indexes = regenerate_indexes(bundle_root)
-    return _summary(bundle_root, concept_id, path, "created", log_path, indexes)
+    with storage.lock():
+        if storage.exists(key):
+            raise ValueError(f"concept already exists: {concept_id}")
+        if not isinstance(type_val, str) or not type_val.strip():
+            raise ValueError("frontmatter must include a non-empty string 'type'")
+        if not fm.get("timestamp"):
+            fm["timestamp"] = _now_iso()
+        storage.write_text(key, OKFDocument(frontmatter=fm, body=body or "").serialize())
+        label = str(fm.get("title") or _id_of(_name_of(key)))
+        log_key = _append_log_for(storage, key, label, "Creation", "Added")
+        indexes = regenerate_indexes(storage)
+    return _summary(concept_id, key, "created", log_key, indexes)
 
 
 def patch_concept(
-    bundle_root: Path,
+    bundle_root: "Path | str | Storage",
     concept_id: str,
     frontmatter: dict | None = None,
     body: str | None = None,
 ) -> dict:
     """Update an existing concept (merge frontmatter, optional body), reindex, log."""
-    path = _concept_path(bundle_root, concept_id)
-    if not path.exists():
-        raise ValueError(f"concept not found: {concept_id}")
-    doc = OKFDocument.parse(path.read_text(encoding="utf-8"))
-    fm = dict(doc.frontmatter)
-    caller_ts = False
-    for key, value in (frontmatter or {}).items():
-        if value is not None:
-            fm[key] = value
-            if key == "timestamp":
-                caller_ts = True
-    new_body = doc.body if body is None else body
-    if not caller_ts:
-        fm["timestamp"] = _now_iso()
-    path.write_text(
-        OKFDocument(frontmatter=fm, body=new_body).serialize(), encoding="utf-8"
-    )
-    label = str(fm.get("title") or path.stem)
-    log_path = _append_log_for(path, label, "Update", "Updated")
-    indexes = regenerate_indexes(bundle_root)
-    return _summary(bundle_root, concept_id, path, "updated", log_path, indexes)
+    storage = open_storage(bundle_root)
+    key = _concept_key(concept_id)
+    with storage.lock():
+        if not storage.exists(key):
+            raise ValueError(f"concept not found: {concept_id}")
+        doc = OKFDocument.parse(storage.read_text(key))
+        fm = dict(doc.frontmatter)
+        caller_ts = False
+        for k, value in (frontmatter or {}).items():
+            if value is not None:
+                fm[k] = value
+                if k == "timestamp":
+                    caller_ts = True
+        new_body = doc.body if body is None else body
+        if not caller_ts:
+            fm["timestamp"] = _now_iso()
+        storage.write_text(key, OKFDocument(frontmatter=fm, body=new_body).serialize())
+        label = str(fm.get("title") or _id_of(_name_of(key)))
+        log_key = _append_log_for(storage, key, label, "Update", "Updated")
+        indexes = regenerate_indexes(storage)
+    return _summary(concept_id, key, "updated", log_key, indexes)
 
 
-def reindex_bundle(bundle_root: Path) -> dict:
+def reindex_bundle(bundle_root: "Path | str | Storage") -> dict:
     """Regenerate every ``_index.md`` in the bundle from current content.
 
     Repairs indexes that have drifted (e.g. files edited outside the producer
     tools). This is index maintenance, not a concept change, so it does not
     touch ``_log.md``. Returns the regenerated index paths and their count.
     """
-    indexes = regenerate_indexes(bundle_root)
-    return {
-        "action": "reindexed",
-        "indexes": [Path(p).relative_to(bundle_root).as_posix() for p in indexes],
-        "count": len(indexes),
-    }
+    storage = open_storage(bundle_root)
+    with storage.lock():
+        indexes = regenerate_indexes(storage)
+    return {"action": "reindexed", "indexes": list(indexes), "count": len(indexes)}
 
 
-def get_concept(bundle_root: Path, concept_id: str) -> dict:
+def get_concept(bundle_root: "Path | str | Storage", concept_id: str) -> dict:
     """Read one concept: frontmatter, body, and resolved outgoing links."""
-    path = _concept_path(bundle_root, concept_id)
-    if not path.exists():
+    storage = open_storage(bundle_root)
+    key = _concept_key(concept_id)
+    if not storage.exists(key):
         raise ValueError(f"concept not found: {concept_id}")
-    doc = OKFDocument.parse(path.read_text(encoding="utf-8"))
-    links = extract_links(doc.body or "", path.parent, bundle_root)
+    doc = OKFDocument.parse(storage.read_text(key))
+    links = extract_link_ids(doc.body or "", _dir_of(key))
     return {
         "id": concept_id,
         "frontmatter": doc.frontmatter,
@@ -232,7 +277,9 @@ def get_concept(bundle_root: Path, concept_id: str) -> dict:
 
 
 def list_concepts(
-    bundle_root: Path, type: str | None = None, prefix: str | None = None
+    bundle_root: "Path | str | Storage",
+    type: str | None = None,
+    prefix: str | None = None,
 ) -> list[dict]:
     """List concepts, optionally filtered by exact ``type`` and/or id ``prefix``."""
     bundle = Bundle.load(bundle_root)
@@ -254,13 +301,9 @@ def list_concepts(
     return out
 
 
-def _rel_dir(bundle_root: Path, directory: Path) -> str:
-    if directory == bundle_root:
-        return ""
-    return directory.relative_to(bundle_root).as_posix()
-
-
-def read_index(bundle_root: Path, dir: str | None = None, depth: int = 1) -> list[dict]:
+def read_index(
+    bundle_root: "Path | str | Storage", dir: str | None = None, depth: int = 1
+) -> list[dict]:
     """Return ``_index.md`` files for progressive disclosure, breadth-first.
 
     Starts at ``dir`` (bundle root if omitted) and descends ``depth`` levels
@@ -268,26 +311,28 @@ def read_index(bundle_root: Path, dir: str | None = None, depth: int = 1) -> lis
     """
     if not isinstance(depth, int) or isinstance(depth, bool) or not 1 <= depth <= 3:
         raise ValueError("depth must be an integer in 1..3")
-    root = bundle_root.resolve()
-    start = root if not dir else (root / dir).resolve()
-    if start != root and root not in start.parents:
-        raise ValueError(f"dir escapes the bundle root: {dir}")
+    storage = open_storage(bundle_root)
+    start = _clean_dir(dir)
     results: list[dict] = []
     level = [start]
     for _ in range(depth):
-        nxt: list[Path] = []
+        nxt: list[str] = []
         for d in level:
-            index_file = d / INDEX_FILENAME
-            if index_file.is_file():
+            index_key = posixpath.join(d, INDEX_FILENAME)
+            if storage.exists(index_key) and not storage.is_dir(index_key):
                 results.append(
                     {
-                        "dir": _rel_dir(root, d),
-                        "path": index_file.relative_to(root).as_posix(),
-                        "content": index_file.read_text(encoding="utf-8"),
+                        "dir": d,
+                        "path": index_key,
+                        "content": storage.read_text(index_key),
                     }
                 )
-            if d.is_dir():
-                nxt.extend(sorted(p for p in d.iterdir() if p.is_dir()))
+            if storage.is_dir(d):
+                nxt.extend(
+                    posixpath.join(d, e.name)
+                    for e in storage.list_dir(d)
+                    if e.is_dir
+                )
         level = nxt
         if not level:
             break
@@ -295,29 +340,32 @@ def read_index(bundle_root: Path, dir: str | None = None, depth: int = 1) -> lis
 
 
 def _log_move(
-    from_path: Path,
-    to_path: Path,
+    storage: Storage,
+    from_key: str,
+    to_key: str,
     frontmatter: dict,
     from_id: str,
     to_id: str,
-) -> list[Path]:
+) -> list[str]:
     """Append Move entries: an arrival in the dest dir log, and (when the source
     directory differs) a departure in the source dir log. Returns the logs."""
-    label = str(frontmatter.get("title") or to_path.stem)
+    label = str(frontmatter.get("title") or _id_of(_name_of(to_key)))
     dt = _now_utc()
     date_group, time = _utc_date(dt), _utc_time(dt)
-    dest_log = to_path.parent / LOG_FILENAME
+    dest_log = _log_key(_dir_of(to_key))
     _append_log(
+        storage,
         dest_log,
-        f"* **{time}** **Move**: Moved [{label}]({to_path.name}) from `{from_id}`.",
+        f"* **{time}** **Move**: Moved [{label}]({_name_of(to_key)}) from `{from_id}`.",
         date_group,
     )
     logs = [dest_log]
-    if from_path.parent != to_path.parent:
-        src_log = from_path.parent / LOG_FILENAME
+    if _dir_of(from_key) != _dir_of(to_key):
+        src_log = _log_key(_dir_of(from_key))
         _append_log(
+            storage,
             src_log,
-            f"* **{time}** **Move**: Moved [{label}]({from_path.name}) to `{to_id}`.",
+            f"* **{time}** **Move**: Moved [{label}]({_name_of(from_key)}) to `{to_id}`.",
             date_group,
         )
         logs.append(src_log)
@@ -325,32 +373,31 @@ def _log_move(
 
 
 def _rewrite_inbound_links(
-    bundle_root: Path, moved_id: str, id_map: dict[str, str]
+    storage: Storage, moved_id: str, id_map: dict[str, str]
 ) -> list[str]:
     """Rewrite links to the moved concept in every other concept document.
 
     Returns the ids of concepts whose body changed (sorted). The moved concept
     itself (now at ``moved_id``) is skipped -- its body was rewritten on write.
     """
-    bundle = Bundle.load(bundle_root)
     relinked: list[str] = []
-    for c in bundle.concepts:
+    for c in Bundle.load(storage).concepts:
         if c.id == moved_id:
             continue
-        path = concept_id_to_path(bundle_root, parse_concept_id(c.id))
-        new_body = rewrite_links(c.body, path.parent, path.parent, bundle_root, id_map)
+        d = posixpath.dirname(c.id)
+        new_body = rewrite_link_ids(c.body, d, d, id_map)
         if new_body != c.body:
-            path.write_text(
-                OKFDocument(
-                    frontmatter=c.document.frontmatter, body=new_body
-                ).serialize(),
-                encoding="utf-8",
+            storage.write_text(
+                f"{c.id}.md",
+                OKFDocument(frontmatter=c.document.frontmatter, body=new_body).serialize(),
             )
             relinked.append(c.id)
     return sorted(relinked)
 
 
-def move_concept(bundle_root: Path, from_concept_id: str, to_concept_id: str) -> dict:
+def move_concept(
+    bundle_root: "Path | str | Storage", from_concept_id: str, to_concept_id: str
+) -> dict:
     """Relocate a concept to a new id: rewrite links, reindex, and log.
 
     Moves the file from ``from_concept_id`` to ``to_concept_id``, rewriting the
@@ -359,61 +406,64 @@ def move_concept(bundle_root: Path, from_concept_id: str, to_concept_id: str) ->
     Preserves frontmatter (including ``timestamp``). Fails if the source is
     missing, the destination exists, or the two ids are equal.
     """
-    from_path = _concept_path(bundle_root, from_concept_id)
-    to_path = _concept_path(bundle_root, to_concept_id)
-    if from_path == to_path:
+    storage = open_storage(bundle_root)
+    from_key = _concept_key(from_concept_id)
+    to_key = _concept_key(to_concept_id)
+    if from_key == to_key:
         raise ValueError("source and destination are the same concept")
-    if not from_path.exists():
-        raise ValueError(f"concept not found: {from_concept_id}")
-    if to_path.exists():
-        raise ValueError(f"destination already exists: {to_concept_id}")
-
     from_id = "/".join(parse_concept_id(from_concept_id))
     to_id = "/".join(parse_concept_id(to_concept_id))
     id_map = {from_id: to_id}
 
-    doc = OKFDocument.parse(from_path.read_text(encoding="utf-8"))
-    new_body = rewrite_links(
-        doc.body or "", from_path.parent, to_path.parent, bundle_root, id_map
-    )
-    to_path.parent.mkdir(parents=True, exist_ok=True)
-    to_path.write_text(
-        OKFDocument(frontmatter=doc.frontmatter, body=new_body).serialize(),
-        encoding="utf-8",
-    )
-    from_path.unlink()
+    with storage.lock():
+        if not storage.exists(from_key):
+            raise ValueError(f"concept not found: {from_concept_id}")
+        if storage.exists(to_key):
+            raise ValueError(f"destination already exists: {to_concept_id}")
 
-    relinked = _rewrite_inbound_links(bundle_root, to_id, id_map)
+        doc = OKFDocument.parse(storage.read_text(from_key))
+        new_body = rewrite_link_ids(
+            doc.body or "", _dir_of(from_key), _dir_of(to_key), id_map
+        )
+        storage.write_text(
+            to_key, OKFDocument(frontmatter=doc.frontmatter, body=new_body).serialize()
+        )
+        storage.delete(from_key)
 
-    logs = _log_move(from_path, to_path, doc.frontmatter, from_id, to_id)
-    indexes = regenerate_indexes(bundle_root)
+        relinked = _rewrite_inbound_links(storage, to_id, id_map)
+
+        logs = _log_move(storage, from_key, to_key, doc.frontmatter, from_id, to_id)
+        indexes = regenerate_indexes(storage)
     return {
         "from": from_id,
         "to": to_id,
         "action": "moved",
         "relinked": relinked,
-        "logs": [Path(p).relative_to(bundle_root).as_posix() for p in logs],
-        "indexes": [Path(p).relative_to(bundle_root).as_posix() for p in indexes],
+        "logs": list(logs),
+        "indexes": list(indexes),
     }
 
 
-def _append_log_deletion(concept_path: Path, label: str) -> Path:
+def _append_log_deletion(storage: Storage, concept_key: str, label: str) -> str:
     """Append a Deletion entry to the directory's log.
 
     The label is backticked (not a markdown link) because the file is gone --
     a link entry would itself be a dangling link.
     """
-    log_path = concept_path.parent / LOG_FILENAME
+    log_key = _log_key(_dir_of(concept_key))
     dt = _now_utc()
     _append_log(
-        log_path,
+        storage,
+        log_key,
         f"* **{_utc_time(dt)}** **Deletion**: Removed `{label}`.",
         _utc_date(dt),
     )
-    return log_path
+    return log_key
 
 
-def delete_concept(bundle_root: Path, concept_id: str, force: bool = False) -> dict:
+def delete_concept(
+    bundle_root: "Path | str | Storage", concept_id: str, force: bool = False
+) -> dict:
     """Delete a concept; safe by default, ``force`` unlinks inbound references.
 
     Collects every other concept whose body links to ``concept_id``. When such
@@ -424,65 +474,70 @@ def delete_concept(bundle_root: Path, concept_id: str, force: bool = False) -> d
     summary (``action="deleted"``). Fails if the concept does not exist or the
     id collides with a reserved file name.
     """
-    path = _concept_path(bundle_root, concept_id)
-    if not path.exists():
-        raise ValueError(f"concept not found: {concept_id}")
+    storage = open_storage(bundle_root)
+    key = _concept_key(concept_id)
     deleted_id = "/".join(parse_concept_id(concept_id))
-    doc = OKFDocument.parse(path.read_text(encoding="utf-8"))
-    label = str(doc.frontmatter.get("title") or path.stem)
+    with storage.lock():
+        if not storage.exists(key):
+            raise ValueError(f"concept not found: {concept_id}")
+        doc = OKFDocument.parse(storage.read_text(key))
+        label = str(doc.frontmatter.get("title") or _id_of(_name_of(key)))
 
-    # One pass: find every other concept whose body links to the deleted id.
-    referrers: list[tuple[str, Path, dict, str]] = []  # (id, path, fm, new_body)
-    for c in Bundle.load(bundle_root).concepts:
-        if c.id == deleted_id:
-            continue
-        c_path = concept_id_to_path(bundle_root, parse_concept_id(c.id))
-        new_body = strip_links(c.body, c_path.parent, bundle_root, {deleted_id})
-        if new_body != c.body:
-            referrers.append((c.id, c_path, c.document.frontmatter, new_body))
+        # One pass: find every other concept whose body links to the deleted id.
+        referrers: list[tuple[str, dict, str]] = []  # (id, fm, new_body)
+        for c in Bundle.load(storage).concepts:
+            if c.id == deleted_id:
+                continue
+            new_body = strip_link_ids(
+                c.body, posixpath.dirname(c.id), {deleted_id}
+            )
+            if new_body != c.body:
+                referrers.append((c.id, c.document.frontmatter, new_body))
 
-    if referrers and not force:
-        return {
-            "concept_id": deleted_id,
-            "action": "blocked",
-            "referenced_by": sorted(rid for rid, _, _, _ in referrers),
-        }
+        if referrers and not force:
+            return {
+                "concept_id": deleted_id,
+                "action": "blocked",
+                "referenced_by": sorted(rid for rid, _, _ in referrers),
+            }
 
-    unlinked: list[str] = []
-    for rid, c_path, fm, new_body in referrers:
-        c_path.write_text(
-            OKFDocument(frontmatter=fm, body=new_body).serialize(),
-            encoding="utf-8",
-        )
-        unlinked.append(rid)
+        unlinked: list[str] = []
+        for rid, fm, new_body in referrers:
+            storage.write_text(
+                f"{rid}.md", OKFDocument(frontmatter=fm, body=new_body).serialize()
+            )
+            unlinked.append(rid)
 
-    path.unlink()
-    log_path = _append_log_deletion(path, label)
-    indexes = regenerate_indexes(bundle_root)
+        storage.delete(key)
+        log_key = _append_log_deletion(storage, key, label)
+        indexes = regenerate_indexes(storage)
     return {
         "concept_id": deleted_id,
-        "path": path.relative_to(bundle_root).as_posix(),
+        "path": key,
         "action": "deleted",
         "unlinked": sorted(unlinked),
-        "log": log_path.relative_to(bundle_root).as_posix(),
-        "indexes": [Path(p).relative_to(bundle_root).as_posix() for p in indexes],
+        "log": log_key,
+        "indexes": list(indexes),
     }
 
 
-def _log_describe(index_path: Path, cleared: bool) -> Path:
+def _log_describe(storage: Storage, dir_key: str, cleared: bool) -> str:
     """Append an Update entry recording a directory-description change."""
-    log_path = index_path.parent / LOG_FILENAME
+    log_key = _log_key(dir_key)
     dt = _now_utc()
     what = "Cleared" if cleared else "Set"
     _append_log(
-        log_path,
+        storage,
+        log_key,
         f"* **{_utc_time(dt)}** **Update**: {what} description for this directory.",
         _utc_date(dt),
     )
-    return log_path
+    return log_key
 
 
-def describe_directory(bundle_root: Path, dir: str, description: str) -> dict:
+def describe_directory(
+    bundle_root: "Path | str | Storage", dir: str, description: str
+) -> dict:
     """Set or clear a directory's authored description in its ``_index.md`` frontmatter.
 
     An empty/whitespace ``description`` clears the key (reverting to the
@@ -491,39 +546,38 @@ def describe_directory(bundle_root: Path, dir: str, description: str) -> dict:
     ``dir`` escapes the bundle root, is not a directory, or has no ``_index.md``
     (directories only exist once populated, so there is always an index to edit).
     """
-    root = bundle_root.resolve()
-    target = root if not dir else (root / dir).resolve()
-    if target != root and root not in target.parents:
-        raise ValueError(f"dir escapes the bundle root: {dir}")
-    if not target.is_dir():
-        raise ValueError(f"directory not found: {dir}")
-    index_path = target / INDEX_FILENAME
-    if not index_path.is_file():
-        raise ValueError(f"directory has no {INDEX_FILENAME}: {dir}")
+    storage = open_storage(bundle_root)
+    target = _clean_dir(dir)
+    with storage.lock():
+        if not storage.is_dir(target):
+            raise ValueError(f"directory not found: {dir}")
+        index_key = posixpath.join(target, INDEX_FILENAME)
+        if not storage.exists(index_key) or storage.is_dir(index_key):
+            raise ValueError(f"directory has no {INDEX_FILENAME}: {dir}")
 
-    doc = OKFDocument.parse(index_path.read_text(encoding="utf-8"))
-    fm = dict(doc.frontmatter)
-    desc = description.strip()
-    cleared = not desc
-    if cleared:
-        fm.pop("description", None)
-    else:
-        fm["description"] = desc
+        doc = OKFDocument.parse(storage.read_text(index_key))
+        fm = dict(doc.frontmatter)
+        desc = description.strip()
+        cleared = not desc
+        if cleared:
+            fm.pop("description", None)
+        else:
+            fm["description"] = desc
 
-    if fm:
-        index_path.write_text(
-            OKFDocument(frontmatter=fm, body=doc.body).serialize(), encoding="utf-8"
-        )
-    else:
-        body = doc.body if doc.body.endswith("\n") else doc.body + "\n"
-        index_path.write_text(body, encoding="utf-8")
+        if fm:
+            storage.write_text(
+                index_key, OKFDocument(frontmatter=fm, body=doc.body).serialize()
+            )
+        else:
+            body = doc.body if doc.body.endswith("\n") else doc.body + "\n"
+            storage.write_text(index_key, body)
 
-    log_path = _log_describe(index_path, cleared)
-    indexes = regenerate_indexes(root)
+        log_key = _log_describe(storage, target, cleared)
+        indexes = regenerate_indexes(storage)
     return {
-        "dir": _rel_dir(root, target),
+        "dir": target,
         "action": "cleared" if cleared else "described",
         "description": None if cleared else desc,
-        "log": log_path.relative_to(root).as_posix(),
-        "indexes": [Path(p).relative_to(root).as_posix() for p in indexes],
+        "log": log_key,
+        "indexes": list(indexes),
     }
