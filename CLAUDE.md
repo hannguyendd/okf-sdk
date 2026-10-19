@@ -17,6 +17,16 @@ the indexing-library design and
 `packages/okf-core/CONFORMANCE.md` for the conformance rules the validator
 checks.
 
+`okf_core.workspace` adds the **workspace** concept (`WorkspaceRegistry`,
+`Workspace`, `okf_home`): named directories under `~/.okf/workspaces/<name>`
+(home overridable via `OKF_HOME`), each holding **indexes** (one bundle per
+visible top-level directory). Filesystem access goes through an injectable
+`LocalStorage`; creation does not `git init`. Tests must pass `home=`/set
+`OKF_HOME` — never touch the real home. See
+`docs/superpowers/specs/2026-10-18-okf-core-workspace-design.md`. Note the
+glossary rename: `_index.md` is now a *directory listing*; *index* means a
+workspace's collection of concepts.
+
 **`packages/okf-mcp`** — a producer MCP server (official `mcp` SDK / FastMCP,
 plus `pydantic-settings`) for authoring bundles: tools to `add`, `patch`,
 `move`, `delete`, `get`, and `list` concepts, `read_index` (progressive

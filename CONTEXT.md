@@ -9,7 +9,7 @@ this format.
 
 **Bundle**:
 A self-contained, hierarchical collection of knowledge documents. The unit of
-distribution.
+distribution. The on-disk form of an index.
 _Avoid_: Repo, package, corpus
 
 **Storage**:
@@ -18,6 +18,17 @@ can live on a local disk or another backend (object store, remote git,
 database). Addressed by bundle-relative keys; the local filesystem is the
 default backend.
 _Avoid_: Filesystem, disk, backend (as the name of the interface)
+
+**Workspace**:
+A named, git-repo-shaped directory at `~/.okf/workspaces/<name>` (the `.okf`
+home is overridable via `OKF_HOME`) that holds one or more indexes. The unit git
+will manage.
+_Avoid_: Project, vault, store (store = `OKF_STORE_ROOT` per-project mode)
+
+**Index**:
+A collection of concepts inside a workspace; exactly one bundle. Each visible
+top-level directory of a workspace is an index, named by its directory.
+_Avoid_: Collection, `_index.md` (that is a directory listing)
 
 **Concept**:
 A single unit of knowledge, represented as exactly one markdown document.
@@ -35,11 +46,11 @@ it exists. Authored when present; otherwise synthesized from the directory's
 contents as a fallback.
 _Avoid_: Role, domain, responsibility, charter, summary
 
-**Index** (`_index.md`):
+**Directory listing** (`_index.md`):
 A per-directory listing that enumerates the directory's contents for progressive
 disclosure. Machine-generated in full, except for an optional authored
 `description` in its frontmatter. Not a concept.
-_Avoid_: TOC, manifest, catalog, listing
+_Avoid_: Index (now means a workspace's collection of concepts), TOC, manifest, catalog
 
 **Synthesized description**:
 The fallback directory description auto-derived from a directory's contents when
