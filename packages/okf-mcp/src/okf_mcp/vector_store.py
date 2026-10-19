@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import posixpath
 import sqlite3
-import threading
 from collections.abc import Callable
 from pathlib import Path
 
@@ -42,11 +41,10 @@ def _excerpt(text: str) -> str:
 
 
 class VectorStore:
-    def __init__(self, path: Path | str) -> None:
+    def __init__(self, path: Path | str, *, busy_timeout_ms: int = _BUSY_TIMEOUT_MS) -> None:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
-        self._lock = threading.Lock()
         try:
             import sqlite_vec
 
@@ -61,7 +59,7 @@ class VectorStore:
                 f"'sqlite-vec' package must be installed ({exc})"
             ) from exc
         self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute(f"PRAGMA busy_timeout={_BUSY_TIMEOUT_MS}")
+        self._conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
         self._conn.executescript(
             "CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);"
             "CREATE TABLE IF NOT EXISTS vectors("
@@ -86,8 +84,11 @@ class VectorStore:
         """Make the store match the bundle's ``_index.md`` files.
 
         Embeds only files whose (truncated) text changed, prunes rows for files that
-        no longer exist, and rebuilds everything when ``model`` changed. One
-        transaction: on any error nothing is written.
+        no longer exist, and rebuilds everything when the model name or the vector
+        dimension changed. Embedding happens *outside* the write transaction, so a
+        slow embedding server never blocks other searches, and a sync that finds
+        nothing to do takes no write lock. The write is one transaction: on any
+        error nothing is stored.
         """
         import sqlite_vec
 
@@ -100,48 +101,65 @@ class VectorStore:
         texts = {k: storage.read_text(k)[:max_chars] for k in keys}
         hashes = {k: hashlib.sha256(t.encode("utf-8")).hexdigest() for k, t in texts.items()}
 
-        with self._lock:
-            conn = self._conn
-            conn.execute("BEGIN IMMEDIATE")
+        try:
+            stored_model, stored_dim = self._meta("model"), self._meta("dim")
+            rebuild = stored_model is not None and stored_model != model
+            existing = (
+                {}
+                if rebuild
+                else dict(self._conn.execute("SELECT key, hash FROM vectors WHERE root=?", (root,)))
+            )
+            changed = [k for k in keys if existing.get(k) != hashes[k]]
+            gone = set(existing) - set(keys)
+            if not changed and not gone and not rebuild and stored_model == model:
+                return
+
+            vectors = self._embed(embed, [texts[k] for k in changed])
+            if vectors and stored_dim is not None and not rebuild and len(vectors[0]) != int(stored_dim):
+                # Same model name, different dimension (e.g. the server swapped the
+                # loaded model): the old vectors are incomparable, so start over.
+                rebuild = True
+                rest = [k for k in keys if k not in set(changed)]
+                more = self._embed(embed, [texts[k] for k in rest])
+                if more and len(more[0]) != len(vectors[0]):
+                    raise VectorStoreError("embedder returned vectors of differing dimensions")
+                changed, vectors = changed + rest, vectors + more
+
+            self._conn.execute("BEGIN IMMEDIATE")
             try:
-                stored_model = self._meta("model")
-                stored_dim = self._meta("dim")
-                if stored_model is not None and stored_model != model:
-                    conn.execute("DELETE FROM vectors")
-                    conn.execute("DELETE FROM meta")
-                    stored_dim = None
-                existing = dict(
-                    conn.execute("SELECT key, hash FROM vectors WHERE root=?", (root,))
-                )
-                for gone in set(existing) - set(keys):
-                    conn.execute("DELETE FROM vectors WHERE root=? AND key=?", (root, gone))
-                changed = [k for k in keys if existing.get(k) != hashes[k]]
-                if changed:
-                    vectors = embed([texts[k] for k in changed])
-                    dims = {len(v) for v in vectors}
-                    if len(vectors) != len(changed) or len(dims) != 1:
-                        raise VectorStoreError(
-                            "embedder returned a different number of vectors than "
-                            "inputs, or vectors of differing dimensions"
-                        )
-                    dim = dims.pop()
-                    if stored_dim is not None and int(stored_dim) != dim:
-                        raise VectorStoreError(
-                            f"embedder returned dimension {dim} but the store holds "
-                            f"{stored_dim} for model {model!r}"
-                        )
-                    for k, v in zip(changed, vectors):
-                        conn.execute(
-                            "INSERT OR REPLACE INTO vectors(root, key, hash, embedding, excerpt)"
-                            " VALUES(?, ?, ?, ?, ?)",
-                            (root, k, hashes[k], sqlite_vec.serialize_float32(v), _excerpt(texts[k])),
-                        )
-                    self._set_meta("dim", str(dim))
+                if rebuild:
+                    self._conn.execute("DELETE FROM vectors")
+                    self._conn.execute("DELETE FROM meta")
+                for k in gone:
+                    self._conn.execute("DELETE FROM vectors WHERE root=? AND key=?", (root, k))
+                for k, v in zip(changed, vectors):
+                    self._conn.execute(
+                        "INSERT OR REPLACE INTO vectors(root, key, hash, embedding, excerpt)"
+                        " VALUES(?, ?, ?, ?, ?)",
+                        (root, k, hashes[k], sqlite_vec.serialize_float32(v), _excerpt(texts[k])),
+                    )
+                if vectors:
+                    self._set_meta("dim", str(len(vectors[0])))
                 self._set_meta("model", model)
-                conn.execute("COMMIT")
+                self._conn.execute("COMMIT")
             except BaseException:
-                conn.execute("ROLLBACK")
+                if self._conn.in_transaction:
+                    self._conn.execute("ROLLBACK")
                 raise
+        except sqlite3.OperationalError as exc:
+            raise VectorStoreError(f"vector database error (is it locked by another process?): {exc}") from exc
+
+    @staticmethod
+    def _embed(embed: Embedder, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        vectors = embed(texts)
+        if len(vectors) != len(texts) or len({len(v) for v in vectors}) != 1:
+            raise VectorStoreError(
+                "embedder returned a different number of vectors than inputs, "
+                "or vectors of differing dimensions"
+            )
+        return vectors
 
     def query(
         self, storage: Storage, vector: list[float], top_k: int, dir: str = ""

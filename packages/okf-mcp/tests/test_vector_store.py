@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -133,15 +134,73 @@ def test_failed_sync_rolls_back(tmp_path):
     assert hits[0]["score"] == pytest.approx(1.0)  # still the old "alpha" vector
 
 
-def test_wrong_dimension_from_embedder_fails_sync_and_keeps_store(tmp_path):
+def test_dimension_change_under_same_model_rebuilds_store(tmp_path):
     s = _bundle(_index_md="alpha root")
     store = _store(tmp_path)
     store.sync(s, FakeEmbedder(dim=4), model="m", max_chars=1000)
     s.write_text("tables/_index.md", "beta tables")
+    emb3 = FakeEmbedder(dim=3)
+    store.sync(s, emb3, model="m", max_chars=1000)
+    assert sorted(emb3.embedded) == ["alpha root", "beta tables"]
+    hits = store.query(s, emb3(["alpha"])[0], top_k=10)
+    assert sorted(h["path"] for h in hits) == ["_index.md", "tables/_index.md"]
+
+
+def test_embedder_returning_wrong_vector_count_fails_sync_and_keeps_store(tmp_path):
+    s = _bundle(_index_md="alpha root")
+    store = _store(tmp_path)
+    store.sync(s, FakeEmbedder(), model="m", max_chars=1000)
+    s.write_text("tables/_index.md", "beta tables")
+    s.write_text("views/_index.md", "gamma views")
     with pytest.raises(VectorStoreError):
-        store.sync(s, FakeEmbedder(dim=3), model="m", max_chars=1000)
+        store.sync(s, lambda texts: [_vec(texts[0])], model="m", max_chars=1000)
     hits = store.query(s, _vec("alpha"), top_k=10)
     assert [h["path"] for h in hits] == ["_index.md"]
+
+
+def test_sync_does_not_hold_write_lock_while_embedding(tmp_path):
+    db = tmp_path / "v.db"
+    store = VectorStore(db)
+    s = _bundle(_index_md="alpha root")
+
+    def embed(texts):
+        other = sqlite3.connect(db, timeout=0.2, isolation_level=None)
+        try:  # a concurrent search elsewhere must still be able to write
+            other.execute("BEGIN IMMEDIATE")
+            other.execute("ROLLBACK")
+        finally:
+            other.close()
+        return [_vec(t) for t in texts]
+
+    store.sync(s, embed, model="m", max_chars=1000)
+
+
+def test_unchanged_sync_needs_no_write_lock(tmp_path):
+    db = tmp_path / "v.db"
+    store = VectorStore(db, busy_timeout_ms=100)
+    s = _bundle(_index_md="alpha root")
+    store.sync(s, FakeEmbedder(), model="m", max_chars=1000)
+    holder = sqlite3.connect(db, isolation_level=None)
+    holder.execute("BEGIN IMMEDIATE")
+    try:
+        store.sync(s, FakeEmbedder(), model="m", max_chars=1000)  # must not raise
+    finally:
+        holder.execute("ROLLBACK")
+        holder.close()
+
+
+def test_locked_database_raises_vector_store_error(tmp_path):
+    db = tmp_path / "v.db"
+    store = VectorStore(db, busy_timeout_ms=100)
+    s = _bundle(_index_md="alpha root")
+    holder = sqlite3.connect(db, isolation_level=None)
+    holder.execute("BEGIN IMMEDIATE")
+    try:
+        with pytest.raises(VectorStoreError, match="locked"):
+            store.sync(s, FakeEmbedder(), model="m", max_chars=1000)
+    finally:
+        holder.execute("ROLLBACK")
+        holder.close()
 
 
 def test_query_ranks_by_cosine_and_respects_top_k(tmp_path):

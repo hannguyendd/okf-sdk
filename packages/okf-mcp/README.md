@@ -178,7 +178,9 @@ indexes whose text changed are re-embedded and deleted ones are dropped — so w
 tools never contact the embedding server, and edits made outside them are picked up
 too. The first search after many changes is slower. If the embedding server is
 down, `search` fails rather than answering from stale vectors. Changing
-`OKF_EMBEDDING_MODEL` rebuilds the file on the next search. This needs a Python
+`OKF_EMBEDDING_MODEL` (or the server starting to return vectors of another dimension)
+rebuilds the file on the next search. Concurrent searches are safe: embedding
+happens outside the database write transaction. This needs a Python
 whose `sqlite3` allows loadable extensions (uv-managed Python does).
 
 ## Development
