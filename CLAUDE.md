@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 of Open Knowledge Format tooling. The root `pyproject.toml` is a **virtual**
 workspace root (no `[project]` of its own); packages live under `packages/*`.
 
-The workspace has two members. **`packages/okf-core`** — a library for
+The workspace has three members. **`packages/okf-core`** — a library for
 reading, indexing, and validating OKF bundles (`OKFDocument`, `Bundle`,
 `regenerate_indexes`, `validate_bundle`). Its only runtime dependency is PyYAML.
 See `docs/superpowers/specs/2026-06-25-okf-core-indexing-library-design.md` for
@@ -43,6 +43,15 @@ MCP `roots` capability, cwd fallback); setting both env vars is an error. See
 `docs/superpowers/specs/2026-06-29-okf-mcp-producer-design.md`,
 `docs/superpowers/specs/2026-07-20-okf-mcp-store-mode-design.md`, and
 `docs/superpowers/plans/2026-06-29-okf-mcp-producer.md`.
+
+**`packages/okf-web`** — local web UI for browsing, searching, and managing a
+bundle: a Starlette HTTP API (`okf_web.app`) that calls `okf_mcp.operations`
+directly (all I/O through `Storage`), plus a React/Vite/TypeScript frontend in
+`packages/okf-web/frontend` (built into the git-ignored `src/okf_web/static`
+and served by the API). Run: `pnpm install && pnpm build` in the frontend
+folder, then `uv run okf-web --bundle-root <dir>` (same root env vars as okf-mcp,
+`--read-only`, binds 127.0.0.1, no auth). Frontend tests: `pnpm test`. See
+`docs/superpowers/specs/2026-10-25-okf-web-ui-design.md`.
 
 **Storage.** All file access in both packages goes through the
 `okf_core.Storage` interface (`read_text`/`write_text`/`delete`/`move`/
