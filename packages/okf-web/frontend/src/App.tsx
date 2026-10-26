@@ -6,7 +6,7 @@ import DirView from "./DirView";
 import { go, href, scopeHref, useRoute } from "./route";
 import WorkspaceHome from "./WorkspaceHome";
 import SearchView from "./SearchView";
-import Tree from "./Tree";
+import Tree, { Active } from "./Tree";
 
 export default function App() {
   const { route, scope } = useRoute();
@@ -27,6 +27,10 @@ export default function App() {
   };
 
   const showTree = !workspaceMode || !!scope;
+  const active: Active | null =
+    route.kind === "concept" || route.kind === "edit" ? { kind: "concept", path: route.id }
+    : route.kind === "dir" ? { kind: "dir", path: route.dir }
+    : route.kind === "new" ? { kind: "dir", path: route.dir } : null;
   let main;
   if (workspaceMode && !scope) {
     main = <WorkspaceHome readOnly={readOnly} />;
@@ -51,7 +55,7 @@ export default function App() {
         {!readOnly && (!workspaceMode || scope) && <button onClick={reindex}>Reindex</button>}
       </header>
       {message && <div role="status" className="cursor-pointer bg-sky-100 px-4 py-1.5 md:col-span-2 dark:bg-sky-950" onClick={() => setMessage(null)}>{message}</div>}
-      {showTree && <aside className="max-h-[30vh] overflow-auto border-b border-stone-300 p-3 md:max-h-none md:border-r md:border-b-0 dark:border-stone-700"><Tree key={scopeKey} version={version} /></aside>}
+      {showTree && <aside className="max-h-[30vh] overflow-auto border-b border-stone-300 p-3 md:max-h-none md:border-r md:border-b-0 dark:border-stone-700"><Tree key={scopeKey} scopeKey={scopeKey} version={version} active={active} /></aside>}
       <main key={scopeKey} className="max-w-4xl px-7 py-4">{main}</main>
     </div>
   );

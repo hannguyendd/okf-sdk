@@ -54,7 +54,10 @@ read-only, 400 for other `ValueError`s.
 ## Frontend
 
 React + TypeScript + Tailwind CSS v4, built and tested with Bun (`Bun.build` + `bun-plugin-tailwind`, `bun test` + happy-dom + Testing Library). Layout: left
-pane = lazy directory tree (expand a directory fetches `/api/tree`), top bar =
+pane = explorer-style lazy tree (folder/document icons, indent guides, highlighted
+active item, ancestors of the open item auto-expanded, expanded state remembered
+per index in localStorage, Collapse all, arrow-key navigation, `tree` ARIA roles;
+expanding a directory fetches `/api/tree`), top bar =
 search + reindex, main pane = concept view (frontmatter table, markdown body,
 outgoing links; internal links navigate) or edit form, or directory view
 (description, edit description, child list, "new concept here"). Markdown
