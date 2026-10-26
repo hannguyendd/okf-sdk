@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+@layer base {
+  body { @apply bg-stone-50 text-stone-900 dark:bg-stone-900 dark:text-stone-100 text-[15px] leading-normal; }
+  h1 { @apply my-2 text-2xl font-bold; }
+  h2 { @apply my-2 text-lg font-semibold; }
+  ul:not([class]) { @apply list-disc pl-6; }
+  a { @apply text-sky-700 hover:underline dark:text-sky-400; }
+  button { @apply cursor-pointer rounded-md border border-stone-300 bg-transparent px-3 py-1 hover:border-sky-600 dark:border-stone-700; }
+  input, textarea { @apply rounded-md border border-stone-300 bg-transparent px-2 py-1 dark:border-stone-700; }
+}

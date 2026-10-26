@@ -1,0 +1,154 @@
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "bun:test";
+import App from "./App";
+import { installFakeApi } from "./fakeApi";
+
+beforeEach(() => {
+  window.location.hash = "";
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+});
+
+async function openConcept(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: /tables/ }));
+  await user.click(await within(screen.getByRole("navigation")).findByRole("link", { name: "Orders" }));
+}
+
+describe("browse and view", () => {
+  it("expands a directory lazily and shows a concept", async () => {
+    const api = installFakeApi();
+    const user = userEvent.setup();
+    render(<App />);
+    expect(await screen.findByText("/mem")).toBeInTheDocument();
+    await openConcept(user);
+    expect(await screen.findByRole("heading", { name: "Orders" })).toBeInTheDocument();
+    expect(screen.getByText("table")).toBeInTheDocument();
+    expect(api.calls.some((c) => c.url === "/api/tree?dir=tables")).toBe(true);
+  });
+
+  it("navigates outgoing links", async () => {
+    installFakeApi();
+    const user = userEvent.setup();
+    render(<App />);
+    await openConcept(user);
+    const links = await screen.findByRole("region", { name: "Links to" });
+    await user.click(within(links).getByRole("link", { name: "tables/users" }));
+    expect(await screen.findByRole("heading", { name: "Users" })).toBeInTheDocument();
+  });
+
+  it("shows an error for a missing concept", async () => {
+    installFakeApi();
+    window.location.hash = "#/c/nope/x";
+    render(<App />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("concept not found");
+  });
+});
+
+describe("search", () => {
+  it("shows hits and opens the directory", async () => {
+    installFakeApi({ search: true });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(await screen.findByRole("searchbox"), "orders{Enter}");
+    const hit = await within(screen.getByRole("main")).findByRole("link", { name: /tables/ });
+    expect(screen.getByText(/0\.91/)).toBeInTheDocument();
+    await user.click(hit);
+    expect(await screen.findByRole("heading", { name: "tables" })).toBeInTheDocument();
+  });
+
+  it("surfaces a not-configured error", async () => {
+    installFakeApi({ search: false });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(await screen.findByRole("searchbox"), "x{Enter}");
+    expect(await screen.findByRole("alert")).toHaveTextContent("embedding is not configured");
+  });
+});
+
+describe("manage", () => {
+  it("edits a concept via patch", async () => {
+    const api = installFakeApi();
+    const user = userEvent.setup();
+    render(<App />);
+    await openConcept(user);
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    const body = screen.getByLabelText("Body");
+    await user.clear(body);
+    await user.type(body, "new text");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.concepts["tables/orders"].body).toBe("new text"));
+    expect(await screen.findByText("new text")).toBeInTheDocument();
+  });
+
+  it("adds a concept in a directory", async () => {
+    const api = installFakeApi();
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /tables/ }));
+    await user.click(await within(screen.getByRole("navigation")).findByRole("link", { name: "tables" }));
+    await user.click(await screen.findByRole("button", { name: "New concept" }));
+    await user.type(screen.getByLabelText("Name"), "events");
+    await user.type(screen.getByLabelText("Type"), "table");
+    await user.type(screen.getByLabelText("Title"), "Events");
+    await user.type(screen.getByLabelText("Body"), "hello");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(api.concepts["tables/events"]).toBeDefined());
+    expect(api.concepts["tables/events"].frontmatter).toMatchObject({ type: "table", title: "Events" });
+    expect(await screen.findByRole("heading", { name: "Events" })).toBeInTheDocument();
+  });
+
+  it("moves a concept", async () => {
+    const api = installFakeApi();
+    const user = userEvent.setup();
+    vi.spyOn(window, "prompt").mockReturnValue("models/orders");
+    render(<App />);
+    await openConcept(user);
+    await user.click(await screen.findByRole("button", { name: "Move" }));
+    await waitFor(() => expect(api.concepts["models/orders"]).toBeDefined());
+    expect(window.location.hash).toBe("#/c/models/orders");
+  });
+
+  it("offers force delete when blocked", async () => {
+    const api = installFakeApi();
+    const user = userEvent.setup();
+    window.location.hash = "#/c/tables/users";
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Delete" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("tables/orders");
+    await user.click(screen.getByRole("button", { name: "Delete anyway" }));
+    await waitFor(() => expect(api.concepts["tables/users"]).toBeUndefined());
+  });
+
+  it("describes a directory and reindexes", async () => {
+    const api = installFakeApi();
+    const user = userEvent.setup();
+    vi.spyOn(window, "prompt").mockReturnValue("Fresh description");
+    window.location.hash = "#/d/tables";
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Edit description" }));
+    await waitFor(() => expect(api.calls.find((c) => c.url === "/api/describe")?.body).toEqual({ dir: "tables", description: "Fresh description" }));
+    await user.click(screen.getByRole("button", { name: "Reindex" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Reindexed");
+  });
+
+  it("hides write controls when read-only", async () => {
+    installFakeApi({ readOnly: true });
+    const user = userEvent.setup();
+    render(<App />);
+    await openConcept(user);
+    await screen.findByRole("heading", { name: "Orders" });
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reindex" })).toBeNull();
+  });
+});
+
+it("does not send the stale timestamp when editing", async () => {
+  const api = installFakeApi();
+  api.concepts["tables/orders"].frontmatter.timestamp = "2020-01-01T00:00:00Z";
+  window.location.hash = "#/e/tables/orders";
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole("button", { name: "Save" }));
+  await waitFor(() => expect(api.calls.some((c) => c.method === "PATCH")).toBe(true));
+  expect(api.calls.find((c) => c.method === "PATCH")!.body!.frontmatter).not.toHaveProperty("timestamp");
+});

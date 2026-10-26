@@ -12,6 +12,7 @@ resolution-markers = [
 members = [
     "okf-core",
     "okf-mcp",
+    "okf-web",
 ]
 
 [manifest.dependency-groups]
@@ -331,6 +332,25 @@ requires-dist = [
     { name = "okf-core", editable = "packages/okf-core" },
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "sqlite-vec", specifier = ">=0.1.9" },
+]
+
+[[package]]
+name = "okf-web"
+version = "0.1.0"
+source = { editable = "packages/okf-web" }
+dependencies = [
+    { name = "okf-core" },
+    { name = "okf-mcp" },
+    { name = "starlette" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "okf-core", editable = "packages/okf-core" },
+    { name = "okf-mcp", editable = "packages/okf-mcp" },
+    { name = "starlette", specifier = ">=0.40" },
+    { name = "uvicorn", specifier = ">=0.30" },
 ]
 
 [[package]]
