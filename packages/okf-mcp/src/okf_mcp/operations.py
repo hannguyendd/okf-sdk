@@ -7,9 +7,7 @@ operations hold ``storage.lock()`` for their whole duration.
 
 from __future__ import annotations
 
-import hashlib
 import posixpath
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,6 +18,7 @@ from okf_core import (
     Bundle,
     OKFDocument,
     Storage,
+    Workspace,
     extract_link_ids,
     open_storage,
     parse_concept_id,
@@ -27,72 +26,9 @@ from okf_core import (
     rewrite_link_ids,
     strip_link_ids,
 )
-from okf_core.storage import is_uri
 
 from okf_mcp.embeddings import EmbeddingConfig, embed_texts
-from okf_mcp.vector_store import Embedder, VectorStore, default_db_path
-
-
-def resolve_bundle_root(
-    arg: "str | Path | None", env_default: "str | Path | None"
-) -> "Path | Storage":
-    """Resolve the bundle root from a call arg, falling back to the env default.
-
-    A plain path resolves to an absolute ``Path`` (must be a directory); a
-    ``scheme://`` location resolves to a ``Storage`` via ``open_storage``.
-    Raises ``ValueError`` when neither is set or the root is not a directory.
-    """
-    chosen = arg or env_default
-    if not chosen:
-        raise ValueError("no bundle root: pass bundle_root or set OKF_BUNDLE_ROOT")
-    if is_uri(chosen) and not str(chosen).startswith("file://"):
-        storage = open_storage(chosen)
-        if not storage.is_dir(""):
-            raise ValueError(f"bundle root is not a directory: {storage.location}")
-        return storage
-    root = open_storage(chosen).root  # type: ignore[attr-defined]
-    if not root.is_dir():
-        raise ValueError(f"bundle root is not a directory: {root}")
-    return root
-
-
-_SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
-
-
-def _slug(name: str) -> str:
-    """Map any run of filesystem-unsafe characters to a single ``-`` and trim."""
-    return _SLUG_RE.sub("-", name).strip("-")
-
-
-def derive_project_folder(project_path: str | Path) -> str:
-    """Per-project subfolder name: ``<slug(basename)>-<hash8-of-absolute-path>``.
-
-    The path is resolved to an absolute, symlink-free form first, so the name is
-    stable regardless of how the path was expressed. Two projects sharing a
-    basename at different absolute paths hash differently and never collide. An
-    empty basename (e.g. the filesystem root) falls back to ``project``.
-    """
-    p = Path(project_path).resolve()
-    base = _slug(p.name) or "project"
-    digest = hashlib.sha256(p.as_posix().encode("utf-8")).hexdigest()[:8]
-    return f"{base}-{digest}"
-
-
-def resolve_store_bundle_root(
-    store_root: "str | Path", project_path: str | Path
-) -> "Path | Storage":
-    """Resolve ``<store_root>/<derive_project_folder(project_path)>``.
-
-    Requires ``store_root`` to be an existing directory (fail fast on a misconfigured
-    ``OKF_STORE_ROOT``); auto-creates the per-project subfolder on first use.
-    A plain path yields a ``Path``; a ``scheme://`` store yields a ``Storage``.
-    """
-    store = open_storage(store_root)
-    if not store.is_dir(""):
-        raise ValueError(f"store root is not a directory: {store.location}")
-    child = store.child(derive_project_folder(project_path))
-    child.mkdir("")
-    return child.root if hasattr(child, "root") else child  # type: ignore[attr-defined]
+from okf_mcp.vector_store import Embedder, VectorStore, workspace_db_path
 
 
 def _concept_key(concept_id: str) -> str:
@@ -589,38 +525,70 @@ def describe_directory(
 _MAX_TOP_K = 20
 
 
-def search_indexes(
-    bundle_root: "Path | str | Storage",
+def search_workspace(
+    workspace: Workspace,
     query: str,
     top_k: int = 5,
+    bundles: list[str] | None = None,
     dir: str | None = None,
     *,
     config: EmbeddingConfig | None,
     max_chars: int = 6000,
-    db_path: Path | str | None = None,
     embed: Embedder | None = None,
+    db_path: Path | str | None = None,
 ) -> list[dict]:
-    """Semantic search over the bundle's ``_index.md`` files.
+    """Semantic search over the ``_index.md`` files and descriptions of a
+    workspace's bundles (all of them unless ``bundles`` narrows the scope).
 
-    Syncs the vector store with the bundle first (embedding only changed files),
-    then returns up to ``top_k`` hits ``{dir, path, score, excerpt}``, best first,
-    optionally limited to ``dir``. Raises if the embedding server fails; never
-    answers from a store it could not bring up to date. Read-only for the bundle.
+    Syncs the workspace vector store first (embedding only what changed, and
+    dropping bundles no longer on disk), then returns up to ``top_k`` hits
+    ``{bundle, kind, dir, path, score, excerpt}``, ranked together, best first.
+    ``dir`` needs exactly one bundle in scope. Raises if the embedding server
+    fails; never answers from a store it could not bring up to date.
+    ``db_path`` overrides the workspace's ``.okf/vectors.db`` (tests).
     """
     if not query or not query.strip():
         raise ValueError("query must not be blank")
     if not isinstance(top_k, int) or isinstance(top_k, bool) or not 1 <= top_k <= _MAX_TOP_K:
         raise ValueError(f"top_k must be an integer in 1..{_MAX_TOP_K}")
+    present = workspace.indexes()
+    scope = present if bundles is None else list(dict.fromkeys(bundles))
+    missing = [b for b in scope if b not in present]
+    if missing:
+        raise FileNotFoundError(
+            f"no bundle {missing[0]!r} in workspace {workspace.name!r}; "
+            f"bundles: {', '.join(present) or '(none)'}"
+        )
     start = _clean_dir(dir)
+    if start and len(scope) != 1:
+        raise ValueError("dir requires exactly one bundle")
     if config is None:
         raise ValueError(
             "embedding is not configured: set OKF_EMBEDDING_URL and OKF_EMBEDDING_MODEL"
         )
     embedder = embed or (lambda texts: embed_texts(texts, config))
-    storage = open_storage(bundle_root)
-    store = VectorStore(db_path or default_db_path(storage))
+    store = VectorStore(db_path or workspace_db_path(workspace))
     try:
-        store.sync(storage, embedder, model=config.model, max_chars=max_chars)
-        return store.query(storage, embedder([query])[0], top_k, start)
+        store.prune_bundles(set(present))
+        for name in scope:
+            store.sync(
+                workspace.bundle_storage(name),
+                embedder,
+                bundle=name,
+                description=workspace.description(name),
+                model=config.model,
+                max_chars=max_chars,
+            )
+        if not scope:
+            return []
+        return store.query(embedder([query])[0], top_k, bundles=scope, dir=start)
     finally:
         store.close()
+
+
+def create_bundle(workspace: Workspace, name: str, description: str | None = None) -> dict:
+    """Create an empty bundle ``name`` in ``workspace`` with an optional
+    description. ``FileExistsError`` if it exists. Its first ``_index.md`` appears
+    with its first concept (indexes only cover directories holding documents)."""
+    workspace.create_index(name, description)
+    return {"bundle": name, "description": workspace.description(name)}
