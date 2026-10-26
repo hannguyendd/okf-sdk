@@ -3,11 +3,23 @@ import pytest
 from okf_web.server import build_app, parse_args
 
 
-def test_requires_a_root(tmp_path, monkeypatch):
+def test_no_root_serves_workspaces(tmp_path, monkeypatch):
+    from starlette.testclient import TestClient
+
     monkeypatch.delenv("OKF_BUNDLE_ROOT", raising=False)
     monkeypatch.delenv("OKF_STORE_ROOT", raising=False)
-    with pytest.raises(SystemExit):
-        build_app(parse_args([]))
+    monkeypatch.setenv("OKF_HOME", str(tmp_path))
+    info = TestClient(build_app(parse_args([]))).get("/api/info").json()
+    assert info["mode"] == "workspace"
+    assert info["location"] == str(tmp_path / "workspaces")
+
+
+def test_workspaces_flag_overrides_bundle_root(tmp_path, monkeypatch):
+    from starlette.testclient import TestClient
+
+    monkeypatch.setenv("OKF_HOME", str(tmp_path / "home"))
+    app = build_app(parse_args(["--bundle-root", str(tmp_path), "--workspaces"]))
+    assert TestClient(app).get("/api/info").json()["mode"] == "workspace"
 
 
 def test_bundle_root_flag_and_read_only(tmp_path, monkeypatch):

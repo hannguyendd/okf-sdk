@@ -50,7 +50,9 @@ directly (all I/O through `Storage`), plus a React/Bun/TypeScript/Tailwind front
 `packages/okf-web/frontend` (built into the git-ignored `src/okf_web/static`
 and served by the API). Run: `bun install && bun run build` in the frontend
 folder, then `uv run okf-web --bundle-root <dir>` (same root env vars as okf-mcp,
-`--read-only`, binds 127.0.0.1, no auth). Frontend tests: `bun test`. See
+`--read-only`, binds 127.0.0.1, no auth). With no root configured (or `--workspaces`)
+it serves the workspace registry under `$OKF_HOME` and the UI offers a
+workspace/index picker. Frontend tests: `bun test`. See
 `docs/superpowers/specs/2026-10-25-okf-web-ui-design.md`.
 
 **Storage.** All file access in both packages goes through the
