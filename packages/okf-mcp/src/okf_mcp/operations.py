@@ -570,15 +570,21 @@ def search_workspace(
     store = VectorStore(db_path or workspace_db_path(workspace))
     try:
         store.prune_bundles(set(present))
-        for name in scope:
-            store.sync(
-                workspace.bundle_storage(name),
-                embedder,
-                bundle=name,
-                description=workspace.description(name),
-                model=config.model,
-                max_chars=max_chars,
-            )
+        def sync_scope() -> bool:
+            rebuilt = False
+            for name in scope:
+                rebuilt |= store.sync(
+                    workspace.bundle_storage(name),
+                    embedder,
+                    bundle=name,
+                    description=workspace.description(name),
+                    model=config.model,
+                    max_chars=max_chars,
+                )
+            return rebuilt
+
+        if sync_scope():  # a rebuild emptied bundles synced earlier in the loop
+            sync_scope()
         if not scope:
             return []
         return store.query(embedder([query])[0], top_k, bundles=scope, dir=start)

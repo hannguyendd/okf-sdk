@@ -201,3 +201,21 @@ def test_workspace_on_memory_storage():
     assert [w.name for w in reg.list()] == ["w"]
     assert ws.bundles_info() == [{"name": "b", "description": "d"}]
     assert ws.path is None
+
+
+def test_create_index_with_invalid_description_creates_nothing(tmp_path: Path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    with pytest.raises(ValueError):
+        ws.create_index("big", "z" * 1001)
+    assert ws.indexes() == []
+    ws.create_index("big", "short")  # a retry succeeds
+    assert ws.description("big") == "short"
+
+
+def test_create_index_with_corrupt_workspace_json_creates_nothing(tmp_path: Path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    _json(ws).parent.mkdir()
+    _json(ws).write_text("{not json")
+    with pytest.raises(ValueError):
+        ws.create_index("b", "d")
+    assert ws.indexes() == []

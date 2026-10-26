@@ -79,6 +79,8 @@ class Workspace:
 
     def create_index(self, name: str, description: str | None = None) -> Storage:
         _validate_name(name, "index")
+        _clean_description(description)  # validate before anything is created
+        self._read_meta()
         if self.storage.exists(name):
             raise FileExistsError(f"Index {name!r} already exists in workspace {self.name!r}")
         self.storage.mkdir(name)

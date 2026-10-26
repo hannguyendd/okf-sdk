@@ -923,3 +923,17 @@ def test_write_tools_never_touch_embedder_or_vector_file(tmp_path, monkeypatch):
     operations.reindex_bundle(root)
     operations.delete_concept(root, "models/orders", False)
     assert not (tmp_path / "bundle.vectors.db").exists()
+
+
+def test_search_after_dimension_change_still_covers_every_bundle(tmp_path):
+    ws = _workspace(tmp_path)
+    _search(ws, "beta", tmp_path, _SearchEmbedder(), top_k=10)
+
+    class _Wider(_SearchEmbedder):  # same model name, new dimension
+        def __call__(self, texts):
+            self.calls.append(list(texts))
+            return [_search_vec(t) + [0.0] for t in texts]
+
+    ws.bundle_storage("b").write_text("x/_index.md", "beta extra")  # only b changed
+    hits = _search(ws, "beta", tmp_path, _Wider(), top_k=10)
+    assert {h["bundle"] for h in hits} == {"a", "b"}

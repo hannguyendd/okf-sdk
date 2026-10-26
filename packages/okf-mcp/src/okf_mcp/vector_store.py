@@ -90,9 +90,11 @@ class VectorStore:
         description: str | None,
         model: str,
         max_chars: int,
-    ) -> None:
+    ) -> bool:
         """Make the store's rows for ``bundle`` match its ``_index.md`` files and
-        its description (``None`` removes the description row).
+        its description (``None`` removes the description row). Returns whether
+        the whole store was rebuilt (model or dimension change), which empties
+        every *other* bundle's rows too.
 
         Embeds only files whose (truncated) text changed, prunes rows for files that
         no longer exist, and rebuilds everything when the model name or the vector
@@ -126,7 +128,7 @@ class VectorStore:
             changed = [k for k in keys if existing.get(k) != hashes[k]]
             gone = set(existing) - set(keys)
             if not changed and not gone and not rebuild and stored_model == model:
-                return
+                return False
 
             vectors = self._embed(embed, [texts[k] for k in changed])
             if vectors and stored_dim is not None and not rebuild and len(vectors[0]) != int(stored_dim):
@@ -162,6 +164,7 @@ class VectorStore:
                     self._set_meta("dim", str(len(vectors[0])))
                 self._set_meta("model", model)
                 self._conn.execute("COMMIT")
+                return rebuild
             except BaseException:
                 if self._conn.in_transaction:
                     self._conn.execute("ROLLBACK")
