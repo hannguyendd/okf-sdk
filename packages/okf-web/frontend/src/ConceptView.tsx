@@ -25,7 +25,7 @@ export default function ConceptView({ id, readOnly, version, onChanged }: Props)
     api.get(id).then(setConcept, (e) => setError(e.message));
   }, [id, version]);
 
-  if (error) return <p role="alert" className="error">{error}</p>;
+  if (error) return <p role="alert" className="text-red-700 dark:text-red-400">{error}</p>;
   if (!concept) return <p>Loading…</p>;
 
   const fail = (e: unknown) => setError((e as Error).message);
@@ -49,26 +49,26 @@ export default function ConceptView({ id, readOnly, version, onChanged }: Props)
   return (
     <article>
       <h1>{String(title ?? id)}</h1>
-      <p className="muted"><code>{id}</code></p>
+      <p className="text-stone-500"><code>{id}</code></p>
       {!readOnly && (
-        <p className="actions">
+        <p className="flex gap-2">
           <button onClick={() => go(href.edit(id))}>Edit</button>
           <button onClick={move}>Move</button>
-          <button className="danger" onClick={() => remove(false)}>Delete</button>
+          <button className="text-red-700 dark:text-red-400" onClick={() => remove(false)}>Delete</button>
         </p>
       )}
       {blocked && (
-        <div role="alert" className="error">
+        <div role="alert" className="text-red-700 dark:text-red-400">
           Referenced by: {blocked.join(", ")}.{" "}
-          <button className="danger" onClick={() => remove(true)}>Delete anyway</button>
+          <button className="text-red-700 dark:text-red-400" onClick={() => remove(true)}>Delete anyway</button>
         </div>
       )}
-      <table className="meta"><tbody>
+      <table className="my-3 border-collapse"><tbody>
         {Object.entries(rest).map(([k, v]) => (
-          <tr key={k}><th>{k}</th><td>{typeof v === "string" ? v : JSON.stringify(v)}</td></tr>
+          <tr key={k}><th className="py-0.5 pr-4 text-left align-top font-medium text-stone-500">{k}</th><td>{typeof v === "string" ? v : JSON.stringify(v)}</td></tr>
         ))}
       </tbody></table>
-      <div className="body">
+      <div className="body border-t border-stone-300 pt-2 dark:border-stone-700 [&_h1]:my-3 [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:my-3 [&_h2]:text-xl [&_h2]:font-semibold [&_p]:my-2 [&_pre]:overflow-auto [&_pre]:rounded-md [&_pre]:bg-stone-200 [&_pre]:p-2.5 dark:[&_pre]:bg-stone-800 [&_ul]:list-disc [&_ul]:pl-6">
         <Markdown components={{ a: ({ href: h, children }) => <a href={resolve(id, h ?? "") ?? h}>{children}</a> }}>
           {concept.body}
         </Markdown>

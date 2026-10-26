@@ -13,7 +13,7 @@ capabilities `okf-mcp` exposes to agents, for a person.
 | Point | Decision | Why |
 |---|---|---|
 | Data access | Small Starlette HTTP API in Python that calls `okf_mcp.operations` directly | Reuses write semantics (reindex, `_log.md`, link rewriting, locking) and the `Storage` interface; no second implementation, no raw pathlib I/O. Starlette/uvicorn already ship with `mcp`. |
-| Where it lives | New workspace member `packages/okf-web` (`src/okf_web` API + `frontend/` Vite/React/TS app) | One package = one command to run; built assets are served by the API from `src/okf_web/static`. |
+| Where it lives | New workspace member `packages/okf-web` (`src/okf_web` API + `frontend/` Bun/React/TS/Tailwind app) | One package = one command to run; built assets are served by the API from `src/okf_web/static`. |
 | Scope v1 | Full management, not staged | The write operations already exist and are tested; the UI is a thin layer. A `--read-only` flag disables writes (API returns 403) for safe viewing. |
 | Target root | Same resolution as okf-mcp: `--bundle-root` / `OKF_BUNDLE_ROOT`, or store mode (`OKF_STORE_ROOT` + project from `--project`, default cwd). Path or `scheme://` location. | Consistent with the MCP server so both see the same memory. Workspace/index picker is out of scope (follow-up). |
 | Auth / hosting | Local only: binds `127.0.0.1`, no auth | Writes are unauthenticated, so it must not be exposed. Hosting needs auth first (follow-up). |
@@ -40,7 +40,7 @@ read-only, 400 for other `ValueError`s.
 
 ## Frontend
 
-React + TypeScript + Vite; tests with Vitest + Testing Library. Layout: left
+React + TypeScript + Tailwind CSS v4, built and tested with Bun (`Bun.build` + `bun-plugin-tailwind`, `bun test` + happy-dom + Testing Library). Layout: left
 pane = lazy directory tree (expand a directory fetches `/api/tree`), top bar =
 search + reindex, main pane = concept view (frontmatter table, markdown body,
 outgoing links; internal links navigate) or edit form, or directory view
@@ -50,5 +50,5 @@ rendered with `react-markdown`. Write buttons hidden when read-only.
 ## Run
 
 `uv run okf-web --bundle-root ./memory` then open http://127.0.0.1:8765.
-Dev: `pnpm dev` in `packages/okf-web/frontend` (Vite proxies `/api` to 8765).
-Build: `pnpm build` (outputs to `src/okf_web/static`, git-ignored).
+Dev: `bun run dev` in `packages/okf-web/frontend` (Bun dev server with HMR on 3000, proxies `/api` to 8765).
+Build: `bun run build` (outputs to `src/okf_web/static`, git-ignored).

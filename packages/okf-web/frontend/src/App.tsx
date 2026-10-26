@@ -33,19 +33,19 @@ export default function App() {
   }
 
   return (
-    <div className="app">
-      <header>
-        <a className="brand" href={href.dir("")}>OKF Memory</a>
-        <code title="bundle location">{info?.location}</code>
+    <div className="grid min-h-screen grid-cols-1 grid-rows-[auto_auto_1fr] md:grid-cols-[280px_1fr]">
+      <header className="flex items-center gap-3 border-b border-stone-300 px-4 py-2 md:col-span-2 dark:border-stone-700">
+        <a className="font-bold text-stone-900 dark:text-stone-100" href={href.dir("")}>OKF Memory</a>
+        <code title="bundle location" className="flex-1 truncate text-xs text-stone-500">{info?.location}</code>
         {info?.read_only && <span className="tag">read-only</span>}
         <form role="search" onSubmit={(e) => { e.preventDefault(); if (q.trim()) go(href.search(q.trim())); }}>
-          <input type="search" aria-label="Search" placeholder="Search memory…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="w-64" type="search" aria-label="Search" placeholder="Search memory…" value={q} onChange={(e) => setQ(e.target.value)} />
         </form>
         {!readOnly && <button onClick={reindex}>Reindex</button>}
       </header>
-      {message && <div role="status" className="status" onClick={() => setMessage(null)}>{message}</div>}
-      <aside><Tree version={version} /></aside>
-      <main>{main}</main>
+      {message && <div role="status" className="cursor-pointer bg-sky-100 px-4 py-1.5 md:col-span-2 dark:bg-sky-950" onClick={() => setMessage(null)}>{message}</div>}
+      <aside className="max-h-[30vh] overflow-auto border-b border-stone-300 p-3 md:max-h-none md:border-r md:border-b-0 dark:border-stone-700"><Tree version={version} /></aside>
+      <main className="max-w-4xl px-7 py-4">{main}</main>
     </div>
   );
 }

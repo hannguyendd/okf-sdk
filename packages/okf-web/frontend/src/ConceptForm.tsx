@@ -25,7 +25,7 @@ export default function ConceptForm(props: Props) {
     }, (e) => setError(e.message));
   }, [props.mode === "edit" ? props.id : ""]);
 
-  if (!ready) return error ? <p role="alert" className="error">{error}</p> : <p>Loading…</p>;
+  if (!ready) return error ? <p role="alert" className="text-red-700 dark:text-red-400">{error}</p> : <p>Loading…</p>;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -49,9 +49,9 @@ export default function ConceptForm(props: Props) {
   const cancel = () => go(props.mode === "new" ? href.dir(props.dir) : href.concept(props.id));
 
   return (
-    <form onSubmit={submit} className="form">
+    <form onSubmit={submit} className="flex flex-col gap-2.5 [&_label]:flex [&_label]:flex-col [&_label]:gap-1 [&_label]:text-[13px] [&_label]:text-stone-500">
       <h1>{props.mode === "new" ? `New concept in ${props.dir || "(root)"}` : `Edit ${props.id}`}</h1>
-      {error && <p role="alert" className="error">{error}</p>}
+      {error && <p role="alert" className="text-red-700 dark:text-red-400">{error}</p>}
       {props.mode === "new" && (
         <label>Name<input value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. orders" /></label>
       )}
@@ -60,7 +60,7 @@ export default function ConceptForm(props: Props) {
       <label>Description<input value={description} onChange={(e) => setDescription(e.target.value)} /></label>
       <label>Tags (comma separated)<input value={tags} onChange={(e) => setTags(e.target.value)} /></label>
       <label>Body<textarea rows={14} value={body} onChange={(e) => setBody(e.target.value)} /></label>
-      <p className="actions">
+      <p className="flex gap-2">
         <button type="submit">{props.mode === "new" ? "Create" : "Save"}</button>
         <button type="button" onClick={cancel}>Cancel</button>
       </p>

@@ -13,7 +13,7 @@ export default function DirView({ dir, readOnly, version, onChanged, onMessage }
     api.tree(dir).then(setData, (e) => setError(e.message));
   }, [dir, version]);
 
-  if (error) return <p role="alert" className="error">{error}</p>;
+  if (error) return <p role="alert" className="text-red-700 dark:text-red-400">{error}</p>;
   if (!data) return <p>Loading…</p>;
 
   const describe = async () => {
@@ -25,9 +25,9 @@ export default function DirView({ dir, readOnly, version, onChanged, onMessage }
   return (
     <article>
       <h1>{dir || "(root)"}</h1>
-      <p className="muted">{data.description ?? "No authored description."}</p>
+      <p className="text-stone-500">{data.description ?? "No authored description."}</p>
       {!readOnly && (
-        <p className="actions">
+        <p className="flex gap-2">
           <button onClick={() => go(href.new(dir))}>New concept</button>
           {dir !== "" && <button onClick={describe}>Edit description</button>}
         </p>
@@ -36,7 +36,7 @@ export default function DirView({ dir, readOnly, version, onChanged, onMessage }
         <section aria-label="Directories">
           <h2>Directories</h2>
           <ul>{data.directories.map((d) => (
-            <li key={d.dir}><a href={href.dir(d.dir)}>{d.name}</a>{d.description && <span className="muted"> — {d.description}</span>}</li>
+            <li key={d.dir}><a href={href.dir(d.dir)}>{d.name}</a>{d.description && <span className="text-stone-500"> — {d.description}</span>}</li>
           ))}</ul>
         </section>
       )}
@@ -45,8 +45,8 @@ export default function DirView({ dir, readOnly, version, onChanged, onMessage }
           <h2>Concepts</h2>
           <ul>{data.concepts.map((c) => (
             <li key={c.id}>
-              <a href={href.concept(c.id)}>{c.title ?? c.id}</a> <span className="tag">{c.type}</span>
-              {c.description && <span className="muted"> — {c.description}</span>}
+              <a href={href.concept(c.id)}>{c.title ?? c.id}</a> <span className="rounded-full border border-stone-300 px-2 text-xs text-stone-500 dark:border-stone-700">{c.type}</span>
+              {c.description && <span className="text-stone-500"> — {c.description}</span>}
             </li>
           ))}</ul>
         </section>

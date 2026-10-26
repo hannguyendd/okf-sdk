@@ -1,13 +1,13 @@
 # okf-web
 
 Local web UI for browsing, searching and managing OKF bundles: a small Starlette
-HTTP API over `okf_mcp.operations` plus a React (Vite + TypeScript) frontend.
+HTTP API over `okf_mcp.operations` plus a React (Bun + TypeScript + Tailwind) frontend.
 Design: `docs/superpowers/specs/2026-10-25-okf-web-ui-design.md`.
 
 ## Run
 
 ```bash
-cd packages/okf-web/frontend && pnpm install && pnpm build   # once: builds into src/okf_web/static
+cd packages/okf-web/frontend && bun install && bun run build  # once: builds into src/okf_web/static
 uv run okf-web --bundle-root ./memory                       # http://127.0.0.1:8765
 ```
 
@@ -20,6 +20,6 @@ binds `127.0.0.1` by default; do not expose it.
 
 ```bash
 uv run okf-web --bundle-root ./memory        # API on 8765
-cd packages/okf-web/frontend && pnpm dev     # Vite dev server, proxies /api
-pnpm test                                    # Vitest; Python: uv run pytest packages/okf-web
+cd packages/okf-web/frontend && bun run dev   # Bun dev server (HMR), proxies /api
+bun test                                     #  Bun test runner; Python: uv run pytest packages/okf-web
 ```

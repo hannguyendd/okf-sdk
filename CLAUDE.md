@@ -46,11 +46,11 @@ MCP `roots` capability, cwd fallback); setting both env vars is an error. See
 
 **`packages/okf-web`** — local web UI for browsing, searching, and managing a
 bundle: a Starlette HTTP API (`okf_web.app`) that calls `okf_mcp.operations`
-directly (all I/O through `Storage`), plus a React/Vite/TypeScript frontend in
+directly (all I/O through `Storage`), plus a React/Bun/TypeScript/Tailwind frontend in
 `packages/okf-web/frontend` (built into the git-ignored `src/okf_web/static`
-and served by the API). Run: `pnpm install && pnpm build` in the frontend
+and served by the API). Run: `bun install && bun run build` in the frontend
 folder, then `uv run okf-web --bundle-root <dir>` (same root env vars as okf-mcp,
-`--read-only`, binds 127.0.0.1, no auth). Frontend tests: `pnpm test`. See
+`--read-only`, binds 127.0.0.1, no auth). Frontend tests: `bun test`. See
 `docs/superpowers/specs/2026-10-25-okf-web-ui-design.md`.
 
 **Storage.** All file access in both packages goes through the
