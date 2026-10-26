@@ -7,8 +7,21 @@ export type Route =
   | { kind: "edit"; id: string }
   | { kind: "search"; q: string };
 
+/** The workspace index the UI is scoped to (workspace mode), from `#/w/<ws>/<index>/...`. */
+export interface Scope { ws: string; index: string }
+let current: Scope | null = null;
+
+export const scopeBase = () =>
+  current ? `/api/workspaces/${encodeURIComponent(current.ws)}/indexes/${encodeURIComponent(current.index)}` : "/api";
+
+export function parseScope(hash: string): { scope: Scope | null; rest: string } {
+  const m = hash.replace(/^#/, "").match(/^\/w\/([^/]+)\/([^/]+)(\/.*)?$/);
+  if (!m) return { scope: null, rest: hash.replace(/^#/, "") };
+  return { scope: { ws: decodeURIComponent(m[1]), index: decodeURIComponent(m[2]) }, rest: m[3] ?? "" };
+}
+
 export function parse(hash: string): Route {
-  const h = hash.replace(/^#/, "");
+  const h = parseScope(hash).rest;
   const [, kind, ...rest] = h.split("/");
   const tail = rest.map(decodeURIComponent).join("/");
   switch (kind) {
@@ -21,22 +34,27 @@ export function parse(hash: string): Route {
 }
 
 const enc = (p: string) => p.split("/").map(encodeURIComponent).join("/");
+export const scopeHref = (s: Scope) => `#/w/${encodeURIComponent(s.ws)}/${encodeURIComponent(s.index)}/`;
+const pre = () => (current ? scopeHref(current).slice(0, -1) : "#");
 export const href = {
-  dir: (dir: string) => `#/d/${enc(dir)}`,
-  concept: (id: string) => `#/c/${enc(id)}`,
-  edit: (id: string) => `#/e/${enc(id)}`,
-  new: (dir: string) => `#/n/${enc(dir)}`,
-  search: (q: string) => `#/s/${encodeURIComponent(q)}`,
+  dir: (dir: string) => `${pre()}/d/${enc(dir)}`,
+  concept: (id: string) => `${pre()}/c/${enc(id)}`,
+  edit: (id: string) => `${pre()}/e/${enc(id)}`,
+  new: (dir: string) => `${pre()}/n/${enc(dir)}`,
+  search: (q: string) => `${pre()}/s/${encodeURIComponent(q)}`,
 };
 
 export const go = (h: string) => { window.location.hash = h; };
 
-export function useRoute(): Route {
-  const [route, setRoute] = useState(() => parse(window.location.hash));
+export function useRoute(): { route: Route; scope: Scope | null } {
+  const read = () => ({ route: parse(window.location.hash), scope: parseScope(window.location.hash).scope });
+  const [state, setState] = useState(read);
+  // Set synchronously so hrefs/api calls made while rendering this route use its scope.
+  current = state.scope;
   useEffect(() => {
-    const on = () => setRoute(parse(window.location.hash));
+    const on = () => setState(read());
     window.addEventListener("hashchange", on);
     return () => window.removeEventListener("hashchange", on);
   }, []);
-  return route;
+  return state;
 }

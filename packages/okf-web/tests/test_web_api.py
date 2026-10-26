@@ -24,7 +24,7 @@ def client(storage, **kw):
 def test_info(storage):
     r = client(storage).get("/api/info")
     assert r.status_code == 200
-    assert r.json() == {"location": storage.location, "read_only": False, "search_enabled": False}
+    assert r.json() == {"mode": "bundle", "location": storage.location, "read_only": False, "search_enabled": False}
 
 
 def test_tree_root_and_subdir(storage):

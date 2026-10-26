@@ -11,7 +11,9 @@ cd packages/okf-web/frontend && bun install && bun run build  # once: builds int
 uv run okf-web --bundle-root ./memory                       # http://127.0.0.1:8765
 ```
 
-Root selection matches okf-mcp: `--bundle-root` / `OKF_BUNDLE_ROOT`, or store mode
+With no root configured (or `--workspaces`) it serves your workspaces under
+`$OKF_HOME` (default `~/.okf`): pick or create a workspace and an index in the UI.
+Otherwise root selection matches okf-mcp: `--bundle-root` / `OKF_BUNDLE_ROOT`, or store mode
 (`OKF_STORE_ROOT`, project from `--project`, default cwd). `--read-only` disables
 writes. Search needs `OKF_EMBEDDING_URL` and `OKF_EMBEDDING_MODEL`. No auth: it
 binds `127.0.0.1` by default; do not expose it.

@@ -152,3 +152,99 @@ it("does not send the stale timestamp when editing", async () => {
   await waitFor(() => expect(api.calls.some((c) => c.method === "PATCH")).toBe(true));
   expect(api.calls.find((c) => c.method === "PATCH")!.body!.frontmatter).not.toHaveProperty("timestamp");
 });
+
+describe("workspaces", () => {
+  it("lists workspaces and opens an index", async () => {
+    const api = installFakeApi({ workspaces: true });
+    const user = userEvent.setup();
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Workspaces" })).toBeInTheDocument();
+    expect(screen.getByText("empty")).toBeInTheDocument();
+    await user.click(await screen.findByRole("link", { name: "notes" }));
+    expect(window.location.hash).toBe("#/w/work/notes/");
+    expect(await screen.findByRole("heading", { name: "(root)" })).toBeInTheDocument();
+    expect(api.calls.some((c) => c.url === "/api/workspaces/work/indexes/notes/tree?dir=")).toBe(true);
+    expect(screen.getByRole("link", { name: "work / notes" })).toBeInTheDocument();
+  });
+
+  it("scopes concept links to the index", async () => {
+    const api = installFakeApi({ workspaces: true });
+    const user = userEvent.setup();
+    window.location.hash = "#/w/work/notes/d/tables";
+    render(<App />);
+    const leaf = await within(screen.getByRole("navigation")).findByRole("link", { name: "Orders" });
+    expect(leaf).toHaveAttribute("href", "#/w/work/notes/c/tables/orders");
+    await user.click(leaf);
+    expect(await screen.findByRole("heading", { name: "Orders" })).toBeInTheDocument();
+    expect(api.calls.some((c) => c.url === "/api/workspaces/work/indexes/notes/concepts/tables/orders")).toBe(true);
+  });
+
+  it("creates a workspace and an index", async () => {
+    const api = installFakeApi({ workspaces: true });
+    const user = userEvent.setup();
+    const prompt = vi.spyOn(window, "prompt");
+    render(<App />);
+    prompt.mockReturnValueOnce("fresh");
+    await user.click(await screen.findByRole("button", { name: "New workspace" }));
+    await waitFor(() => expect(api.workspaces.some((w) => w.name === "fresh")).toBe(true));
+    prompt.mockReturnValueOnce("mem");
+    await user.click(await screen.findByRole("button", { name: "New index in fresh" }));
+    await waitFor(() => expect(api.workspaces.find((w) => w.name === "fresh")!.indexes).toEqual(["mem"]));
+    expect(await screen.findByRole("link", { name: "mem" })).toBeInTheDocument();
+  });
+
+  it("hides creation controls when read-only", async () => {
+    installFakeApi({ workspaces: true, readOnly: true });
+    render(<App />);
+    await screen.findByRole("heading", { name: "Workspaces" });
+    expect(screen.queryByRole("button", { name: "New workspace" })).toBeNull();
+  });
+});
+
+describe("tree view", () => {
+  const nav = () => within(screen.getByRole("navigation"));
+
+  it("reveals and highlights the open concept on a deep link", async () => {
+    installFakeApi();
+    window.location.hash = "#/c/tables/orders";
+    render(<App />);
+    const leaf = await nav().findByRole("link", { name: "Orders" });
+    expect(leaf).toHaveAttribute("aria-current", "page");
+    expect(nav().getByRole("link", { name: "Users" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("highlights the open directory", async () => {
+    installFakeApi();
+    window.location.hash = "#/d/tables";
+    render(<App />);
+    expect(await nav().findByRole("link", { name: "tables" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("collapses everything", async () => {
+    installFakeApi();
+    window.location.hash = "#/c/tables/orders";
+    const user = userEvent.setup();
+    render(<App />);
+    await nav().findByRole("link", { name: "Orders" });
+    await user.click(screen.getByRole("button", { name: "Collapse all" }));
+    expect(nav().queryByRole("link", { name: "Orders" })).toBeNull();
+    expect(nav().getByRole("button", { name: "Toggle tables" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("exposes tree semantics and keyboard expand/collapse", async () => {
+    installFakeApi();
+    const user = userEvent.setup();
+    render(<App />);
+    const dir = await nav().findByRole("link", { name: "tables" });
+    expect(screen.getByRole("tree")).toBeInTheDocument();
+    dir.focus();
+    await user.keyboard("{ArrowRight}");
+    const orders = await nav().findByRole("link", { name: "Orders" });
+    await user.keyboard("{ArrowDown}");
+    expect(orders).toHaveFocus();
+    await user.keyboard("{ArrowLeft}"); // from a leaf: back to its parent directory
+    expect(dir).toHaveFocus();
+    await user.keyboard("{ArrowLeft}");
+    expect(nav().queryByRole("link", { name: "Orders" })).toBeNull();
+  });
+});
