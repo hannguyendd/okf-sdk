@@ -20,37 +20,44 @@ checks.
 `okf_core.workspace` adds the **workspace** concept (`WorkspaceRegistry`,
 `Workspace`, `okf_home`): named directories under `~/.okf/workspaces/<name>`
 (home overridable via `OKF_HOME`), each holding **indexes** (one bundle per
-visible top-level directory). Filesystem access goes through an injectable
-`LocalStorage`; creation does not `git init`. Tests must pass `home=`/set
-`OKF_HOME` — never touch the real home. See
+visible top-level directory) and a hidden `.okf/` metadata folder:
+`.okf/workspace.json` stores bundle descriptions (`{"version": 1, "bundles":
+{name: {description}}}`, max 1000 chars) and `.okf/vectors.db` is the
+workspace's search index. Workspaces use the shared `Storage` interface;
+creation does not `git init`. Tests must pass `root=`/set `OKF_HOME` — never
+touch the real home. See
 `docs/superpowers/specs/2026-10-18-okf-core-workspace-design.md`. Note the
 glossary rename: `_index.md` is now a *directory listing*; *index* means a
-workspace's collection of concepts.
+workspace's collection of concepts (MCP and web call it a *bundle*).
 
 **`packages/okf-mcp`** — a producer MCP server (official `mcp` SDK / FastMCP,
 plus `pydantic-settings`) for authoring bundles: tools to `add`, `patch`,
 `move`, `delete`, `get`, and `list` concepts, `read_index` (progressive
 disclosure), `describe` (set/clear a directory's authored `description` in its
 `_index.md` frontmatter), and `reindex` (regenerate all `_index.md` to repair
-drift), plus `search` (semantic search over `_index.md` files via a local
-OpenAI-compatible embedding server and a sqlite-vec file kept outside the bundle;
-synced lazily at search time, see
-`docs/superpowers/specs/2026-10-19-okf-mcp-vector-search-design.md`). Write tools
-re-index and append a directory-scoped `_log.md` entry after each write. The bundle root comes from `OKF_BUNDLE_ROOT` (overridable per call), or set
-`OKF_STORE_ROOT` for **store mode** — a base directory the server auto-partitions
-into a per-project subfolder `<project-basename>-<hash8>` (project path from the
-MCP `roots` capability, cwd fallback); setting both env vars is an error. See
-`docs/superpowers/specs/2026-06-29-okf-mcp-producer-design.md`,
-`docs/superpowers/specs/2026-07-20-okf-mcp-store-mode-design.md`, and
-`docs/superpowers/plans/2026-06-29-okf-mcp-producer.md`.
+drift); workspace tools `list_workspaces`, `list_bundles`, `create_bundle`,
+`describe_bundle` (no workspace creation over MCP); plus `search` (semantic
+search across a workspace's `_index.md` files and bundle descriptions via a local
+OpenAI-compatible embedding server and the workspace's sqlite-vec file, synced
+lazily at search time, filterable by `bundles`). Write tools re-index and append
+a directory-scoped `_log.md` entry after each write. Every tool targets a
+**workspace + bundle** resolved by `okf_mcp.target`: tool arg > `X-OKF-Workspace`
+/ `X-OKF-Bundle` header (`--transport streamable-http`) > `OKF_WORKSPACE` /
+`OKF_BUNDLE` env > the pick remembered for the MCP session > the only candidate
+or MCP elicitation; results echo the target. See
+`docs/superpowers/specs/2026-10-26-okf-workspace-targeting-design.md` (supersedes
+the old `OKF_BUNDLE_ROOT`/`OKF_STORE_ROOT` modes),
+`docs/superpowers/specs/2026-06-29-okf-mcp-producer-design.md`, and
+`docs/superpowers/specs/2026-10-19-okf-mcp-vector-search-design.md`.
 
 **`packages/okf-web`** — local web UI for browsing, searching, and managing a
 bundle: a Starlette HTTP API (`okf_web.app`) that calls `okf_mcp.operations`
 directly (all I/O through `Storage`), plus a React/Bun/TypeScript/Tailwind frontend in
 `packages/okf-web/frontend` (built into the git-ignored `src/okf_web/static`
 and served by the API). Run: `bun install && bun run build` in the frontend
-folder, then `uv run okf-web --bundle-root <dir>` (same root env vars as okf-mcp,
-`--read-only`, binds 127.0.0.1, no auth). Frontend tests: `bun test`. See
+folder, then `uv run okf-web --workspace <ws> --bundle <b>` (or `OKF_WORKSPACE` /
+`OKF_BUNDLE`, or the only one; `--read-only`, binds 127.0.0.1, no auth). The UI
+shows and edits the bundle description. Frontend tests: `bun test`. See
 `docs/superpowers/specs/2026-10-25-okf-web-ui-design.md`.
 
 **Storage.** All file access in both packages goes through the
@@ -58,8 +65,8 @@ folder, then `uv run okf-web --bundle-root <dir>` (same root env vars as okf-mcp
 `list_dir`/`iter_files`/`mkdir`/`lock`, bundle-relative POSIX keys).
 `LocalStorage` is the default, `MemoryStorage` the test double; other backends
 plug in via `register_backend` or the `okf_core.storage` entry-point group
-(optional extras — core stays PyYAML-only). `OKF_BUNDLE_ROOT` /
-`OKF_STORE_ROOT` / `bundle_root` accept a path or a `scheme://` location. Don't
+(optional extras — core stays PyYAML-only). `WorkspaceRegistry(root=...)`
+accepts a path or a `Storage`. Don't
 do `pathlib` I/O on bundle files directly; go through a `Storage`. See
 `docs/superpowers/specs/2026-10-19-okf-storage-interface-design.md`.
 

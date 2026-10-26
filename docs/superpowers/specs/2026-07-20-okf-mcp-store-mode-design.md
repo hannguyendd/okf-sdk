@@ -3,6 +3,7 @@
 **Date:** 2026-07-20
 **Status:** Approved (brainstorming) — ready for implementation plan
 **Depends on:** `okf-mcp` producer server (§ patterns from `2026-06-29-okf-mcp-producer-design.md`); the MCP `roots` client capability
+**Superseded by:** `2026-10-26-okf-workspace-targeting-design.md` — store mode and `OKF_BUNDLE_ROOT` were removed in favour of workspace + bundle targeting.
 
 ## 1. Motivation
 

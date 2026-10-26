@@ -176,7 +176,7 @@ them need a bundle. Their behavior is otherwise unchanged.
 |---|---|---|
 | `list_workspaces` | — | `[{name, bundles: int}]`. Never elicits. |
 | `list_bundles` | `workspace?` | `[{name, description}]`. Elicits the workspace if unresolved. |
-| `create_bundle` | `name`, `description?`, `workspace?` | `{workspace, bundle, description}`. Creates the directory, records the description, and runs `regenerate_indexes` so the new bundle has a root `_index.md` (my call). `FileExistsError` if it already exists. |
+| `create_bundle` | `name`, `description?`, `workspace?` | `{workspace, bundle, description}`. Creates the empty directory and records the description. (Implementation note: no root `_index.md` is seeded, because okf-core only indexes directories that contain documents; `read_index`/`list` return `[]` for an empty bundle.) `FileExistsError` if it already exists. |
 | `describe_bundle` | `description` (string or null to clear), `bundle?`, `workspace?` | `{workspace, bundle, description}` |
 
 The description of `create_bundle`/`describe_bundle` invalidates that bundle's
@@ -284,7 +284,6 @@ with a bundle filter on search. MCP can create bundles but not workspaces.
 - Search defaults to all bundles instead of asking.
 - `dir` requires a single bundle.
 - Description cap of 1000 chars.
-- `create_bundle` seeds a root `_index.md`.
 - okf-web stays one bundle per process.
 - `OKF_VECTOR_DB` removed.
 - MCP and web say "bundle", while okf-core keeps its "index" method names

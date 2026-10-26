@@ -3,104 +3,67 @@
 Producer MCP server for authoring and maintaining Open Knowledge Format (OKF)
 bundles. Built on the official `mcp` SDK (FastMCP); depends on `okf-core`.
 
-## Configuration
+## Workspaces and bundles
 
-Set the bundle root via the `OKF_BUNDLE_ROOT` environment variable, or pass
-`bundle_root` to any tool to override per call. For local use, copy
-`.env.example` to `.env` (gitignored) and set `OKF_BUNDLE_ROOT` there — real
-environment variables take precedence over the `.env` file. Example MCP client
-config:
+The server works on **bundles inside workspaces**:
+`<OKF_HOME>/workspaces/<workspace>/<bundle>/` (`OKF_HOME` defaults to `~/.okf`).
+Each workspace keeps its metadata in a hidden `.okf/` folder:
+`.okf/workspace.json` holds each bundle's description (what it is for), and
+`.okf/vectors.db` is the workspace's search index. Workspaces are created by a
+person; agents can create **bundles** (`create_bundle`).
 
-```json
-{
-  "mcpServers": {
-    "okf-producer": {
-      "command": "okf-mcp",
-      "env": { "OKF_BUNDLE_ROOT": "/path/to/bundle" }
-    }
-  }
-}
-```
+Every tool takes optional `workspace` and `bundle` arguments. Each is resolved
+independently, first match wins:
 
-### Store mode (`OKF_STORE_ROOT`)
+1. the tool argument;
+2. the `X-OKF-Workspace` / `X-OKF-Bundle` request header (HTTP transport);
+3. the `OKF_WORKSPACE` / `OKF_BUNDLE` environment variable (also read from `.env`);
+4. the choice the user made earlier in this MCP session;
+5. otherwise the only candidate, if there is exactly one, or **the user is asked**
+   (MCP elicitation). A client without elicitation gets an error listing the
+   choices, so the agent can retry with an argument.
 
-Instead of pointing at a single bundle, set `OKF_STORE_ROOT` to a base directory
-and the server partitions documents into a **per-project subfolder** under it —
-no per-project configuration:
+The default workspace and default bundle act as a pair: the default bundle is
+ignored when a call names a different workspace. Every result echoes the
+`workspace` and `bundle` it used.
 
-```json
-{
-  "mcpServers": {
-    "okf-producer": {
-      "command": "okf-mcp",
-      "env": { "OKF_STORE_ROOT": "/path/to/store" }
-    }
-  }
-}
-```
+## Setup
 
-The subfolder is named `<project-basename>-<hash8>`, e.g. a project at
-`/Users/you/dev/acme/web-app` resolves to `/path/to/store/web-app-3f9a1c7b/`. The
-basename is the readable prefix; the 8-hex-char SHA-256 of the absolute path keeps
-two same-named projects from colliding. The subfolder is created on first write.
-
-The **project path** comes from the client's MCP `roots` capability (the first
-advertised workspace folder); if the client sends no roots, the server falls back
-to its working directory.
-
-**Resolution precedence** (per call): an explicit `bundle_root` argument wins;
-otherwise `OKF_STORE_ROOT` (store mode); otherwise `OKF_BUNDLE_ROOT` (single
-bundle). Setting **both** `OKF_STORE_ROOT` and `OKF_BUNDLE_ROOT` is an error
-(`set OKF_STORE_ROOT or OKF_BUNDLE_ROOT, not both`). `OKF_STORE_ROOT` must be an
-existing directory.
-
-### Storage backends
-
-`OKF_BUNDLE_ROOT`, `OKF_STORE_ROOT`, and the per-call `bundle_root` accept a
-**location**: a plain path or `file://` URI uses the local filesystem (the
-default); any other `scheme://` is resolved through `okf_core`'s storage-backend
-registry (a backend package registers itself via the `okf_core.storage`
-entry-point group). In store mode the per-project folder is created under the
-store on whatever backend it points at. Write tools hold the storage's lock for
-the whole operation. See `okf_core.Storage`.
-
-## Setup (stdio)
-
-`main()` calls `mcp.run()`, which uses the **stdio** transport: the client
-launches the server as a subprocess and speaks JSON-RPC over stdin/stdout. No
-flags are needed.
-
-### Launch command
-
-Pick one for your client config (replace `/path/to/okf-sdk` and the bundle path):
-
-- **Direct venv console script** (simplest — its shebang resolves all deps, no
-  `uv` needed on `PATH`):
-  `/path/to/okf-sdk/.venv/bin/okf-mcp`
-- **Via uv** (re-syncs the workspace if needed):
-  `uv run --directory /path/to/okf-sdk okf-mcp`
-
-The bundle the server edits comes from `OKF_BUNDLE_ROOT` (or a per-call
-`bundle_root`); the directory must exist.
-
-### Claude Code
-
-```bash
-claude mcp add okf-producer \
-  --scope project \
-  --env OKF_BUNDLE_ROOT=/path/to/bundle \
-  -- /path/to/okf-sdk/.venv/bin/okf-mcp
-```
-
-`claude mcp list` should report `okf-producer: ✓ connected`, and `/mcp` lists the
-tools. This is equivalent to a project `.mcp.json`:
+### stdio (default)
 
 ```json
 {
   "mcpServers": {
     "okf-producer": {
       "command": "/path/to/okf-sdk/.venv/bin/okf-mcp",
-      "env": { "OKF_BUNDLE_ROOT": "/path/to/bundle" }
+      "env": { "OKF_WORKSPACE": "team", "OKF_BUNDLE": "notes" }
+    }
+  }
+}
+```
+
+Both env vars are optional. Launch with the venv console script (above) or
+`uv run --directory /path/to/okf-sdk okf-mcp`. With Claude Code:
+
+```bash
+claude mcp add okf-producer --scope project \
+  --env OKF_WORKSPACE=team \
+  -- /path/to/okf-sdk/.venv/bin/okf-mcp
+```
+
+### Streamable HTTP (defaults per client via headers)
+
+```bash
+okf-mcp --transport streamable-http --port 8000   # binds 127.0.0.1; no auth
+```
+
+```json
+{
+  "mcpServers": {
+    "okf-producer": {
+      "type": "http",
+      "url": "http://127.0.0.1:8000/mcp",
+      "headers": { "X-OKF-Workspace": "team", "X-OKF-Bundle": "notes" }
     }
   }
 }
@@ -125,7 +88,8 @@ printf '%s\n' \
 ```
 
 Expect an `initialize` result naming `okf-producer`, then a `tools/list` with
-`add, patch, get, list, read_index, move, reindex, delete, describe, search`. Or explore interactively with the
+`add, patch, get, list, read_index, move, reindex, delete, describe, search,
+list_workspaces, list_bundles, create_bundle, describe_bundle`. Or explore interactively with the
 [MCP Inspector](https://github.com/modelcontextprotocol/inspector):
 
 ```bash
@@ -133,23 +97,35 @@ npx @modelcontextprotocol/inspector \
   uv run --directory /path/to/okf-sdk okf-mcp
 ```
 
-The server starts even with no `OKF_BUNDLE_ROOT`; it only errors when a tool runs
-and cannot resolve a bundle root. stdio keeps stdout reserved for protocol
+The server starts even with no workspace configured; a tool only errors when it
+runs and cannot resolve its workspace or bundle. stdio keeps stdout reserved for protocol
 traffic — tools return values rather than printing.
 
 ## Tools
 
-- `add(concept_id, frontmatter, body, bundle_root?)` — create a concept (fails if it exists; `type` required).
-- `patch(concept_id, frontmatter?, body?, bundle_root?)` — update a concept (merge-only frontmatter; body replaced only when given).
-- `get(concept_id, bundle_root?)` — read one concept (frontmatter, body, outgoing links).
-- `list(type?, prefix?, bundle_root?)` — enumerate concepts, optionally filtered.
-- `read_index(dir?, depth=1, bundle_root?)` — read `_index.md` files for progressive disclosure (depth 1-3).
-- `move(from_concept_id, to_concept_id, bundle_root?)` — relocate/rename a concept; rewrites inbound and own links, regenerates indexes, logs a Move entry (fails if source missing, destination exists, or ids equal).
-- `delete(concept_id, force=False, bundle_root?)` — delete a concept; safe by default (returns `action="blocked"` with `referenced_by` when other concepts link to it). `force=True` deletes anyway, unlinking inbound references (`[label](target.md)` → `label`), then regenerates indexes and logs a Deletion entry. Irreversible; fails if the concept does not exist.
-- `reindex(bundle_root?)` — regenerate every `_index.md` from current content to repair drift (e.g. files edited outside these tools); does not touch `_log.md`.
-- `describe(dir, description, bundle_root?)` — set a directory's authored `description` (its purpose) in that directory's `_index.md` frontmatter; regenerates indexes so it appears in the parent's listing, and appends an Update `_log.md` entry. An empty string clears it (reverting to the synthesized summary). Fails if `dir` has no `_index.md`.
+Concept tools — each also takes optional `workspace` and `bundle`, and returns
+its result plus `workspace` and `bundle` (list results as `{workspace, bundle, items}`):
 
-- `search(query, top_k=5, dir?, bundle_root?)` — semantic search over `_index.md` files: returns up to `top_k` (1-20) hits `{dir, path, score, excerpt}`, best first, optionally limited to `dir` and below. Use it to find the right area, then go deeper with `read_index` / `list` / `get` on a hit's `dir`. See [Search](#search).
+- `add(concept_id, frontmatter, body)` — create a concept (fails if it exists; `type` required).
+- `patch(concept_id, frontmatter?, body?)` — update a concept (merge-only frontmatter; body replaced only when given).
+- `get(concept_id)` — read one concept (frontmatter, body, outgoing links).
+- `list(type?, prefix?)` — enumerate concepts, optionally filtered.
+- `read_index(dir?, depth=1)` — read `_index.md` files for progressive disclosure (depth 1-3).
+- `move(from_concept_id, to_concept_id)` — relocate/rename a concept; rewrites inbound and own links, regenerates indexes, logs a Move entry (fails if source missing, destination exists, or ids equal).
+- `delete(concept_id, force=False)` — delete a concept; safe by default (returns `action="blocked"` with `referenced_by` when other concepts link to it). `force=True` deletes anyway, unlinking inbound references (`[label](target.md)` → `label`), then regenerates indexes and logs a Deletion entry. Irreversible; fails if the concept does not exist.
+- `reindex()` — regenerate every `_index.md` from current content to repair drift (e.g. files edited outside these tools); does not touch `_log.md`.
+- `describe(dir, description)` — set a directory's authored `description` in that directory's `_index.md` frontmatter; regenerates indexes and appends an Update `_log.md` entry. An empty string clears it. Fails if `dir` has no `_index.md`.
+
+Workspace and bundle tools:
+
+- `list_workspaces()` — `[{name, bundles}]`.
+- `list_bundles(workspace?)` — `{workspace, bundles: [{name, description}]}`.
+- `create_bundle(name, description?, workspace?)` — create an empty bundle (fails if it exists).
+- `describe_bundle(description, bundle?, workspace?)` — set (or clear with null/empty) what a bundle is for; max 1000 chars.
+
+Search:
+
+- `search(query, top_k=5, bundles?, dir?, workspace?)` — semantic search across the workspace: returns `{workspace, bundles, hits}`, hits `{bundle, kind, dir, path, score, excerpt}` best first (`kind` is `index`, or `bundle` for a bundle-description match with `path` null). Searches every bundle unless `bundles` (or a default bundle) narrows it; `dir` needs exactly one bundle. See [Search](#search).
 
 Every write tool (`add`/`patch`/`move`/`delete`/`describe`) regenerates indexes and appends
 a dated entry to the relevant directory `_log.md`. `add`/`patch` manage the
@@ -159,8 +135,9 @@ indexes — it is index maintenance, not a concept change, so it writes no log e
 ## Search
 
 `search` embeds every `_index.md` (one file = one chunk, truncated to
-`OKF_EMBEDDING_MAX_CHARS`) with a **local OpenAI-compatible embedding server**
-and ranks them by cosine similarity. Concept bodies are not searched. It is
+`OKF_EMBEDDING_MAX_CHARS`) and every bundle description with a **local
+OpenAI-compatible embedding server**, and ranks them together by cosine
+similarity. Concept bodies are not searched. It is
 disabled until you configure the server; every other tool works without it.
 
 | Variable | Meaning | Default |
@@ -169,17 +146,16 @@ disabled until you configure the server; every other tool works without it.
 | `OKF_EMBEDDING_MODEL` | Model name sent to the server | unset (search errors) |
 | `OKF_EMBEDDING_API_KEY` | Bearer token, if the server wants one | none |
 | `OKF_EMBEDDING_MAX_CHARS` | Max characters of an `_index.md` sent to the model | `6000` |
-| `OKF_VECTOR_DB` | Path of the sqlite-vec file | sibling `<bundle_root>.vectors.db` |
 
-Vectors live in a single [`sqlite-vec`](https://github.com/asg017/sqlite-vec) file
-**outside** the bundle (the sibling `<bundle_root>.vectors.db`; set `OKF_VECTOR_DB`
-for non-local storage). The file is synced at the start of every search — only
-indexes whose text changed are re-embedded and deleted ones are dropped — so write
+Vectors live in one [`sqlite-vec`](https://github.com/asg017/sqlite-vec) file per
+workspace, `<workspace>/.okf/vectors.db`, outside every bundle. The bundles a
+search covers are synced at its start — only indexes and descriptions whose text
+changed are re-embedded, and deleted files and bundles are dropped — so write
 tools never contact the embedding server, and edits made outside them are picked up
 too. The first search after many changes is slower. If the embedding server is
 down, `search` fails rather than answering from stale vectors. Changing
 `OKF_EMBEDDING_MODEL` (or the server starting to return vectors of another dimension)
-rebuilds the file on the next search. Concurrent searches are safe: embedding
+rebuilds the whole workspace file on the next search. Concurrent searches are safe: embedding
 happens outside the database write transaction. This needs a Python
 whose `sqlite3` allows loadable extensions (uv-managed Python does).
 
