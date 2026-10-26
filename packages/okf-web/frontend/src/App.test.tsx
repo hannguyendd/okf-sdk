@@ -153,61 +153,168 @@ it("does not send the stale timestamp when editing", async () => {
   expect(api.calls.find((c) => c.method === "PATCH")!.body!.frontmatter).not.toHaveProperty("timestamp");
 });
 
-describe("bundle description", () => {
-  it("shows workspace / bundle and its description in the header", async () => {
-    installFakeApi();
-    render(<App />);
-    const header = await screen.findByRole("banner");
-    expect(await within(header).findByText("w / b")).toBeInTheDocument();
-    expect(within(header).getByText("Billing data")).toBeInTheDocument();
-  });
-
-  it("edits the bundle description via /api/bundle/describe", async () => {
-    const api = installFakeApi();
-    vi.spyOn(window, "prompt").mockReturnValue("New purpose");
+describe("workspaces", () => {
+  it("lists workspaces and opens an index", async () => {
+    const api = installFakeApi({ workspaces: true });
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: "Edit bundle description" }));
-    expect(await screen.findByText("New purpose")).toBeInTheDocument();
-    const call = api.calls.find((c) => c.url === "/api/bundle/describe")!;
+    expect(await screen.findByRole("heading", { name: "Workspaces" })).toBeInTheDocument();
+    expect(screen.getByText("empty")).toBeInTheDocument();
+    await user.click(await screen.findByRole("link", { name: "notes" }));
+    expect(window.location.hash).toBe("#/w/work/notes/");
+    expect(await screen.findByRole("heading", { name: "(root)" })).toBeInTheDocument();
+    expect(api.calls.some((c) => c.url === "/api/workspaces/work/indexes/notes/tree?dir=")).toBe(true);
+    expect(screen.getByRole("link", { name: "work / notes" })).toBeInTheDocument();
+  });
+
+  it("scopes concept links to the index", async () => {
+    const api = installFakeApi({ workspaces: true });
+    const user = userEvent.setup();
+    window.location.hash = "#/w/work/notes/d/tables";
+    render(<App />);
+    const leaf = await within(screen.getByRole("navigation")).findByRole("link", { name: "Orders" });
+    expect(leaf).toHaveAttribute("href", "#/w/work/notes/c/tables/orders");
+    await user.click(leaf);
+    expect(await screen.findByRole("heading", { name: "Orders" })).toBeInTheDocument();
+    expect(api.calls.some((c) => c.url === "/api/workspaces/work/indexes/notes/concepts/tables/orders")).toBe(true);
+  });
+
+  it("creates a workspace and an index", async () => {
+    const api = installFakeApi({ workspaces: true });
+    const user = userEvent.setup();
+    const prompt = vi.spyOn(window, "prompt");
+    render(<App />);
+    prompt.mockReturnValueOnce("fresh");
+    await user.click(await screen.findByRole("button", { name: "New workspace" }));
+    await waitFor(() => expect(api.workspaces.some((w) => w.name === "fresh")).toBe(true));
+    prompt.mockReturnValueOnce("mem");
+    await user.click(await screen.findByRole("button", { name: "New index in fresh" }));
+    await waitFor(() => expect(api.workspaces.find((w) => w.name === "fresh")!.indexes).toEqual([{ name: "mem", description: null }]));
+    expect(await screen.findByRole("link", { name: "mem" })).toBeInTheDocument();
+  });
+
+  it("hides creation controls when read-only", async () => {
+    installFakeApi({ workspaces: true, readOnly: true });
+    render(<App />);
+    await screen.findByRole("heading", { name: "Workspaces" });
+    expect(screen.queryByRole("button", { name: "New workspace" })).toBeNull();
+  });
+});
+
+describe("tree view", () => {
+  const nav = () => within(screen.getByRole("navigation"));
+
+  it("reveals and highlights the open concept on a deep link", async () => {
+    installFakeApi();
+    window.location.hash = "#/c/tables/orders";
+    render(<App />);
+    const leaf = await nav().findByRole("link", { name: "Orders" });
+    expect(leaf).toHaveAttribute("aria-current", "page");
+    expect(nav().getByRole("link", { name: "Users" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("highlights the open directory", async () => {
+    installFakeApi();
+    window.location.hash = "#/d/tables";
+    render(<App />);
+    expect(await nav().findByRole("link", { name: "tables" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("collapses everything", async () => {
+    installFakeApi();
+    window.location.hash = "#/c/tables/orders";
+    const user = userEvent.setup();
+    render(<App />);
+    await nav().findByRole("link", { name: "Orders" });
+    await user.click(screen.getByRole("button", { name: "Collapse all" }));
+    expect(nav().queryByRole("link", { name: "Orders" })).toBeNull();
+    expect(nav().getByRole("button", { name: "Toggle tables" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("exposes tree semantics and keyboard expand/collapse", async () => {
+    installFakeApi();
+    const user = userEvent.setup();
+    render(<App />);
+    const dir = await nav().findByRole("link", { name: "tables" });
+    expect(screen.getByRole("tree")).toBeInTheDocument();
+    dir.focus();
+    await user.keyboard("{ArrowRight}");
+    const orders = await nav().findByRole("link", { name: "Orders" });
+    await user.keyboard("{ArrowDown}");
+    expect(orders).toHaveFocus();
+    await user.keyboard("{ArrowLeft}"); // from a leaf: back to its parent directory
+    expect(dir).toHaveFocus();
+    await user.keyboard("{ArrowLeft}");
+    expect(nav().queryByRole("link", { name: "Orders" })).toBeNull();
+  });
+});
+
+describe("index description", () => {
+  it("lists index descriptions on the workspaces page", async () => {
+    installFakeApi({ workspaces: true });
+    render(<App />);
+    expect(await screen.findByText(/Meeting notes/)).toBeInTheDocument();
+  });
+
+  it("shows the open index's description in the header", async () => {
+    installFakeApi({ workspaces: true });
+    window.location.hash = "#/w/work/notes/";
+    render(<App />);
+    const header = screen.getByRole("banner");
+    expect(await within(header).findByText("Meeting notes")).toBeInTheDocument();
+  });
+
+  it("edits the index description via the bundle describe route", async () => {
+    const api = installFakeApi({ workspaces: true });
+    vi.spyOn(window, "prompt").mockReturnValue("New purpose");
+    const user = userEvent.setup();
+    window.location.hash = "#/w/work/notes/";
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Edit index description" }));
+    expect(await within(screen.getByRole("banner")).findByText("New purpose")).toBeInTheDocument();
+    const call = api.calls.find((c) => c.url === "/api/workspaces/work/indexes/notes/bundle/describe")!;
     expect(call.method).toBe("POST");
     expect(call.body).toEqual({ description: "New purpose" });
   });
 
-  it("an empty prompt clears the bundle description", async () => {
-    const api = installFakeApi();
+  it("an empty prompt clears the description", async () => {
+    const api = installFakeApi({ workspaces: true });
     vi.spyOn(window, "prompt").mockReturnValue("");
     const user = userEvent.setup();
+    window.location.hash = "#/w/work/notes/";
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: "Edit bundle description" }));
-    expect(await screen.findByText("No description")).toBeInTheDocument();
-    expect(api.calls.find((c) => c.url === "/api/bundle/describe")!.body).toEqual({ description: null });
+    await user.click(await screen.findByRole("button", { name: "Edit index description" }));
+    expect(await within(screen.getByRole("banner")).findByText("No description")).toBeInTheDocument();
+    expect(api.calls.find((c) => c.url.endsWith("/bundle/describe"))!.body).toEqual({ description: null });
   });
 
   it("a cancelled prompt changes nothing", async () => {
-    const api = installFakeApi();
+    const api = installFakeApi({ workspaces: true });
     vi.spyOn(window, "prompt").mockReturnValue(null);
     const user = userEvent.setup();
+    window.location.hash = "#/w/work/notes/";
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: "Edit bundle description" }));
-    expect(api.calls.some((c) => c.url === "/api/bundle/describe")).toBe(false);
+    await user.click(await screen.findByRole("button", { name: "Edit index description" }));
+    expect(api.calls.some((c) => c.url.endsWith("/bundle/describe"))).toBe(false);
   });
 
   it("hides the edit control when read-only", async () => {
-    installFakeApi({ readOnly: true });
+    installFakeApi({ workspaces: true, readOnly: true });
+    window.location.hash = "#/w/work/notes/";
     render(<App />);
-    expect(await screen.findByText("Billing data")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Edit bundle description" })).toBeNull();
+    expect(await within(screen.getByRole("banner")).findByText("Meeting notes")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit index description" })).toBeNull();
   });
 
-  it("renders a bundle-description search hit linking to the bundle root", async () => {
-    installFakeApi({ search: true });
+  it("renders a description search hit linking to the index root", async () => {
+    installFakeApi({ workspaces: true, search: true });
     const user = userEvent.setup();
+    window.location.hash = "#/w/work/notes/";
     render(<App />);
-    await user.type(await screen.findByRole("searchbox"), "billing{Enter}");
+    await user.type(await screen.findByRole("searchbox"), "meetings{Enter}");
     const main = screen.getByRole("main");
-    const link = await within(main).findByRole("link", { name: "bundle b" });
-    expect(link.getAttribute("href")).toBe("#/d/");
-    expect(within(main).getByText("Billing data excerpt")).toBeInTheDocument();
+    const link = await within(main).findByRole("link", { name: "index notes" });
+    expect(link.getAttribute("href")).toBe("#/w/work/notes/d/");
+    expect(within(main).getByText("Meeting notes excerpt")).toBeInTheDocument();
   });
 });

@@ -227,6 +227,16 @@ search(query, top_k=5, bundles: list[str] | None = None, dir: str | None = None,
 
 ## 9. okf-web
 
+> **Superseded on merge with #6** (okf-web workspace and index picker, merged to
+> `main` first): okf-web serves the whole workspace registry under `$OKF_HOME`
+> rather than one bundle per process. The `--bundle-root`/`--project`/
+> `--workspaces` flags are gone. Each index's description is listed on the
+> workspaces page, returned by `GET .../indexes/{index}/bundle`, editable in the
+> header through `POST .../indexes/{index}/bundle/describe` (blocked by
+> `--read-only`), and accepted by index creation. Search uses the workspace
+> `.okf/vectors.db`, scoped to the open index. The text below is the original
+> pre-merge design.
+
 - `--bundle-root` and `--project` are replaced by `--workspace` and `--bundle`,
   falling back to `OKF_WORKSPACE` / `OKF_BUNDLE`. There's no elicitation in a
   CLI: if one is missing, use it when exactly one candidate exists, otherwise

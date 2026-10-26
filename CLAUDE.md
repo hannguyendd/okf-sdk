@@ -55,9 +55,9 @@ bundle: a Starlette HTTP API (`okf_web.app`) that calls `okf_mcp.operations`
 directly (all I/O through `Storage`), plus a React/Bun/TypeScript/Tailwind frontend in
 `packages/okf-web/frontend` (built into the git-ignored `src/okf_web/static`
 and served by the API). Run: `bun install && bun run build` in the frontend
-folder, then `uv run okf-web --workspace <ws> --bundle <b>` (or `OKF_WORKSPACE` /
-`OKF_BUNDLE`, or the only one; `--read-only`, binds 127.0.0.1, no auth). The UI
-shows and edits the bundle description. Frontend tests: `bun test`. See
+folder, then `uv run okf-web` (serves the workspace registry under `$OKF_HOME`
+with a workspace/index picker; `--read-only`, binds 127.0.0.1, no auth). The UI
+shows and edits each index's description. Frontend tests: `bun test`. See
 `docs/superpowers/specs/2026-10-25-okf-web-ui-design.md`.
 
 **Storage.** All file access in both packages goes through the

@@ -1,13 +1,16 @@
 // Test helper: an in-memory stand-in for the okf-web HTTP API.
 type Json = Record<string, any>;
 
-export function installFakeApi(opts: { readOnly?: boolean; search?: boolean } = {}) {
+export function installFakeApi(opts: { readOnly?: boolean; search?: boolean; workspaces?: boolean } = {}) {
   const concepts: Record<string, { frontmatter: Json; body: string }> = {
     "tables/orders": { frontmatter: { type: "table", title: "Orders", tags: ["a"] }, body: "See [users](users.md)\n" },
     "tables/users": { frontmatter: { type: "table", title: "Users" }, body: "Users body" },
   };
+  const workspaces: { name: string; indexes: { name: string; description: string | null }[] }[] = [
+    { name: "work", indexes: [{ name: "notes", description: "Meeting notes" }] },
+    { name: "empty", indexes: [] },
+  ];
   const calls: { method: string; url: string; body?: Json }[] = [];
-  let description: string | null = "Billing data";
   const res = (data: unknown, status = 200) =>
     Promise.resolve(new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } }));
   const meta = (id: string) => ({ id, type: concepts[id].frontmatter.type, title: concepts[id].frontmatter.title, description: null, tags: concepts[id].frontmatter.tags ?? [] });
@@ -17,12 +20,26 @@ export function installFakeApi(opts: { readOnly?: boolean; search?: boolean } = 
     const method = init?.method ?? "GET";
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ method, url: url.pathname + url.search, body });
-    const p = url.pathname;
-    if (p === "/api/info") return res({ location: "/mem", read_only: !!opts.readOnly, search_enabled: !!opts.search, workspace: "w", bundle: "b", description });
-    if (p === "/api/bundle/describe") {
-      description = body!.description;
-      return res({ workspace: "w", bundle: "b", description });
+    let p = url.pathname;
+    if (p === "/api/info")
+      return res({ mode: opts.workspaces ? "workspace" : "bundle", location: "/mem", read_only: !!opts.readOnly, search_enabled: !!opts.search });
+    if (p === "/api/workspaces" && method === "GET") return res(workspaces);
+    if (p === "/api/workspaces" && method === "POST") {
+      workspaces.push({ name: body!.name, indexes: [] });
+      return res({ name: body!.name, indexes: [] }, 201);
     }
+    const mi = p.match(/^\/api\/workspaces\/([^/]+)\/indexes$/);
+    if (mi && method === "POST") {
+      workspaces.find((w) => w.name === mi[1])!.indexes.push({ name: body!.name, description: null });
+      return res({ name: body!.name, description: null }, 201);
+    }
+    const ms = p.match(/^\/api\/workspaces\/([^/]+)\/indexes\/([^/]+)\/bundle(\/describe)?$/);
+    if (ms) {
+      const idx = workspaces.find((w) => w.name === ms[1])!.indexes.find((i) => i.name === ms[2])!;
+      if (ms[3]) idx.description = body!.description;
+      return res({ workspace: ms[1], bundle: ms[2], description: idx.description });
+    }
+    p = p.replace(/^\/api\/workspaces\/[^/]+\/indexes\/[^/]+/, "/api");
     if (p === "/api/tree") {
       const dir = url.searchParams.get("dir") ?? "";
       if (dir === "") return res({ dir, description: null, directories: [{ name: "tables", dir: "tables", description: "Warehouse tables" }], concepts: [] });
@@ -31,8 +48,8 @@ export function installFakeApi(opts: { readOnly?: boolean; search?: boolean } = 
     if (p === "/api/search") {
       if (!opts.search) return res({ error: "embedding is not configured" }, 400);
       return res([
-        { bundle: "b", kind: "index", dir: "tables", path: "tables/_index.md", score: 0.91, excerpt: "Warehouse tables excerpt" },
-        { bundle: "b", kind: "bundle", dir: "", path: null, score: 0.42, excerpt: "Billing data excerpt" },
+        { bundle: "notes", kind: "index", dir: "tables", path: "tables/_index.md", score: 0.91, excerpt: "Warehouse tables excerpt" },
+        { bundle: "notes", kind: "bundle", dir: "", path: null, score: 0.42, excerpt: "Meeting notes excerpt" },
       ]);
     }
     if (p === "/api/reindex") return res({ action: "reindexed", count: 2, indexes: [] });
@@ -64,5 +81,5 @@ export function installFakeApi(opts: { readOnly?: boolean; search?: boolean } = 
     }
     return res({ error: "unhandled " + p }, 500);
   }) as typeof fetch;
-  return { calls, concepts };
+  return { calls, concepts, workspaces };
 }

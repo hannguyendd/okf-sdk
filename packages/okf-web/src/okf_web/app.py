@@ -1,4 +1,4 @@
-"""Starlette HTTP API over ``okf_mcp.operations`` for one bundle of a workspace."""
+"""Starlette HTTP API over ``okf_mcp.operations`` for the bundles of a workspace registry."""
 
 from __future__ import annotations
 
@@ -12,7 +12,14 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
 
-from okf_core import INDEX_FILENAME, RESERVED_STEMS, OKFDocument, Storage, Workspace
+from okf_core import (
+    INDEX_FILENAME,
+    RESERVED_STEMS,
+    OKFDocument,
+    Storage,
+    Workspace,
+    WorkspaceRegistry,
+)
 from okf_mcp import operations
 
 
@@ -53,15 +60,16 @@ def _tree(storage: Storage, dir: str | None) -> dict:
 
 
 def create_app(
-    workspace: Workspace,
-    bundle: str,
+    registry: WorkspaceRegistry,
     *,
     read_only: bool = False,
     search_config=None,
     search_max_chars: int = 6000,
     static_dir: Path | str | None = None,
 ) -> Starlette:
-    storage = workspace.bundle_storage(bundle)
+    """Serve a workspace registry: each bundle (index) is addressed under
+    ``/api/workspaces/{workspace}/indexes/{index}``; search uses the workspace's
+    ``.okf/vectors.db``."""
 
     def guard() -> None:
         if read_only:
@@ -81,6 +89,10 @@ def create_app(
                 return JSONResponse(result, status_code=status)
             except _Forbidden as e:
                 return JSONResponse({"error": str(e)}, status_code=403)
+            except FileNotFoundError as e:
+                return JSONResponse({"error": f"not found: {e}"}, status_code=404)
+            except FileExistsError as e:
+                return JSONResponse({"error": str(e)}, status_code=400)
             except (ValueError, KeyError, TypeError) as e:
                 msg = str(e).strip("'") if isinstance(e, KeyError) else str(e)
                 if isinstance(e, KeyError):
@@ -95,105 +107,124 @@ def create_app(
 
     def info(request, body):
         return {
-            "location": storage.location,
+            "mode": "workspace",
+            "location": registry.storage.location,
             "read_only": read_only,
             "search_enabled": search_config is not None,
-            "workspace": workspace.name,
-            "bundle": bundle,
-            "description": workspace.description(bundle),
         }
 
-    def describe_bundle(request, body):
-        stored = workspace.set_description(bundle, body["description"])
-        return {"workspace": workspace.name, "bundle": bundle, "description": stored}
+    def bundle_routes(prefix: str, resolve) -> list[Route]:
+        """The per-bundle API; ``resolve(request)`` yields that request's Storage."""
 
-    def search(request, body):
-        return operations.search_workspace(
-            workspace,
-            q(request, "q", ""),
-            int(q(request, "top_k", 5)),
-            [bundle],
-            q(request, "dir"),
-            config=search_config,
-            max_chars=search_max_chars,
-        )
+        def workspace(request) -> Workspace:
+            return registry.get(request.path_params["workspace"])
 
-    routes = [
-        Route("/api/info", handler(info)),
-        Route("/api/tree", handler(lambda r, b: _tree(storage, q(r, "dir")))),
-        Route(
-            "/api/index",
-            handler(lambda r, b: operations.read_index(storage, q(r, "dir"), int(q(r, "depth", 1)))),
-        ),
-        Route(
-            "/api/concepts",
-            handler(lambda r, b: operations.list_concepts(storage, q(r, "type"), q(r, "prefix"))),
-            methods=["GET"],
-        ),
-        Route(
-            "/api/concepts",
-            handler(
-                lambda r, b: operations.add_concept(
-                    storage, b["concept_id"], b.get("frontmatter") or {}, b.get("body") or ""
+        def bundle_info(request, body):
+            ws, name = workspace(request), request.path_params["index"]
+            ws.bundle_storage(name)  # 404 for an unknown bundle
+            return {"workspace": ws.name, "bundle": name, "description": ws.description(name)}
+
+        def describe_bundle(request, body):
+            ws, name = workspace(request), request.path_params["index"]
+            stored = ws.set_description(name, body["description"])
+            return {"workspace": ws.name, "bundle": name, "description": stored}
+
+        def search(request, body):
+            return operations.search_workspace(
+                workspace(request),
+                q(request, "q", ""),
+                int(q(request, "top_k", 5)),
+                [request.path_params["index"]],
+                q(request, "dir"),
+                config=search_config,
+                max_chars=search_max_chars,
+            )
+
+        def r(path, fn, methods, **kw):
+            return Route(prefix + path, handler(fn, **kw), methods=methods)
+
+        cid = lambda req: req.path_params["concept_id"]  # noqa: E731
+        return [
+            r("/tree", lambda rq, b: _tree(resolve(rq), q(rq, "dir")), ["GET"]),
+            r(
+                "/index",
+                lambda rq, b: operations.read_index(resolve(rq), q(rq, "dir"), int(q(rq, "depth", 1))),
+                ["GET"],
+            ),
+            r(
+                "/concepts",
+                lambda rq, b: operations.list_concepts(resolve(rq), q(rq, "type"), q(rq, "prefix")),
+                ["GET"],
+            ),
+            r(
+                "/concepts",
+                lambda rq, b: operations.add_concept(
+                    resolve(rq), b["concept_id"], b.get("frontmatter") or {}, b.get("body") or ""
                 ),
+                ["POST"],
                 write=True,
                 status=201,
             ),
-            methods=["POST"],
-        ),
-        Route(
-            "/api/concepts/{concept_id:path}",
-            handler(lambda r, b: operations.get_concept(storage, r.path_params["concept_id"])),
-            methods=["GET"],
-        ),
-        Route(
-            "/api/concepts/{concept_id:path}",
-            handler(
-                lambda r, b: operations.patch_concept(
-                    storage, r.path_params["concept_id"], b.get("frontmatter"), b.get("body")
-                ),
+            r("/concepts/{concept_id:path}", lambda rq, b: operations.get_concept(resolve(rq), cid(rq)), ["GET"]),
+            r(
+                "/concepts/{concept_id:path}",
+                lambda rq, b: operations.patch_concept(resolve(rq), cid(rq), b.get("frontmatter"), b.get("body")),
+                ["PATCH"],
                 write=True,
             ),
-            methods=["PATCH"],
-        ),
-        Route(
-            "/api/concepts/{concept_id:path}",
-            handler(
-                lambda r, b: operations.delete_concept(
-                    storage, r.path_params["concept_id"], q(r, "force", "") in ("1", "true")
+            r(
+                "/concepts/{concept_id:path}",
+                lambda rq, b: operations.delete_concept(
+                    resolve(rq), cid(rq), q(rq, "force", "") in ("1", "true")
                 ),
+                ["DELETE"],
                 write=True,
             ),
-            methods=["DELETE"],
-        ),
-        Route(
-            "/api/move",
-            handler(
-                lambda r, b: operations.move_concept(
-                    storage, b["from_concept_id"], b["to_concept_id"]
-                ),
+            r(
+                "/move",
+                lambda rq, b: operations.move_concept(resolve(rq), b["from_concept_id"], b["to_concept_id"]),
+                ["POST"],
                 write=True,
             ),
-            methods=["POST"],
-        ),
-        Route(
-            "/api/describe",
-            handler(
-                lambda r, b: operations.describe_directory(
-                    storage, b["dir"], b.get("description", "")
-                ),
+            r(
+                "/describe",
+                lambda rq, b: operations.describe_directory(resolve(rq), b["dir"], b.get("description", "")),
+                ["POST"],
                 write=True,
             ),
-            methods=["POST"],
-        ),
+            r("/reindex", lambda rq, b: operations.reindex_bundle(resolve(rq)), ["POST"], write=True),
+            r("/search", search, ["GET"]),
+            r("/bundle", bundle_info, ["GET"]),
+            r("/bundle/describe", describe_bundle, ["POST"], write=True),
+        ]
+
+    def index_storage(request: Request) -> Storage:
+        ws = registry.get(request.path_params["workspace"])
+        return ws.bundle_storage(request.path_params["index"])
+
+    def list_workspaces(request, body):
+        return [{"name": w.name, "indexes": w.bundles_info()} for w in registry.list()]
+
+    def create_workspace(request, body):
+        registry.create(body["name"])
+        return {"name": body["name"], "indexes": []}
+
+    def create_index(request, body):
+        ws = registry.get(request.path_params["workspace"])
+        result = operations.create_bundle(ws, body["name"], body.get("description"))
+        return {"name": result["bundle"], "description": result["description"]}
+
+    routes = [
+        Route("/api/info", handler(info)),
+        Route("/api/workspaces", handler(list_workspaces), methods=["GET"]),
+        Route("/api/workspaces", handler(create_workspace, write=True, status=201), methods=["POST"]),
         Route(
-            "/api/reindex",
-            handler(lambda r, b: operations.reindex_bundle(storage), write=True),
+            "/api/workspaces/{workspace}/indexes",
+            handler(create_index, write=True, status=201),
             methods=["POST"],
         ),
-        Route("/api/search", handler(search)),
-        Route("/api/bundle/describe", handler(describe_bundle, write=True), methods=["POST"]),
     ]
+    routes += bundle_routes("/api/workspaces/{workspace}/indexes/{index}", index_storage)
 
     if static_dir is not None:
         root = Path(static_dir).resolve()

@@ -15,10 +15,23 @@ capabilities `okf-mcp` exposes to agents, for a person.
 | Data access | Small Starlette HTTP API in Python that calls `okf_mcp.operations` directly | Reuses write semantics (reindex, `_log.md`, link rewriting, locking) and the `Storage` interface; no second implementation, no raw pathlib I/O. Starlette/uvicorn already ship with `mcp`. |
 | Where it lives | New workspace member `packages/okf-web` (`src/okf_web` API + `frontend/` Bun/React/TS/Tailwind app) | One package = one command to run; built assets are served by the API from `src/okf_web/static`. |
 | Scope v1 | Full management, not staged | The write operations already exist and are tested; the UI is a thin layer. A `--read-only` flag disables writes (API returns 403) for safe viewing. |
-| Target root | Same resolution as okf-mcp: `--bundle-root` / `OKF_BUNDLE_ROOT`, or store mode (`OKF_STORE_ROOT` + project from `--project`, default cwd). Path or `scheme://` location. | Consistent with the MCP server so both see the same memory. Workspace/index picker is out of scope (follow-up). |
+| Target root | Same resolution as okf-mcp (or workspace mode, see below): `--bundle-root` / `OKF_BUNDLE_ROOT`, or store mode (`OKF_STORE_ROOT` + project from `--project`, default cwd). Path or `scheme://` location. | Consistent with the MCP server so both see the same memory. The workspace/index picker was added afterwards (see Workspace mode). |
 | Auth / hosting | Local only: binds `127.0.0.1`, no auth | Writes are unauthenticated, so it must not be exposed. Hosting needs auth first (follow-up). |
 | Search | `GET /api/search` calls `operations.search_indexes` with the okf-mcp `OKF_EMBEDDING_*` settings; unconfigured returns a clear 400 and the UI shows it | Semantic search over `_index.md` only, same as the MCP tool. |
 | `okf-core` | Unchanged (PyYAML-only) | |
+
+## Workspace mode (added after v1)
+
+With no bundle root configured (or `--workspaces`), the server serves the
+workspace registry under `$OKF_HOME` (default `~/.okf`) instead of one bundle.
+`/api/info` reports `mode: "workspace"`; the UI opens on a Workspaces page
+(list, create workspace, create index) and each index is addressed by
+`#/w/<workspace>/<index>/...`. API: `GET/POST /api/workspaces`,
+`POST /api/workspaces/{ws}/indexes`, and every bundle route below also exists under
+`/api/workspaces/{ws}/indexes/{index}`. `OKF_VECTOR_DB` applies only to a fixed
+bundle (indexes use the default sibling vector file). `--read-only` also blocks
+creating workspaces and indexes. An explicit root (`--bundle-root`, env) keeps the
+single-bundle behaviour. Index/workspace deletion and renaming are out of scope.
 
 ## HTTP API (all JSON, bundle root fixed at server start)
 
@@ -41,7 +54,10 @@ read-only, 400 for other `ValueError`s.
 ## Frontend
 
 React + TypeScript + Tailwind CSS v4, built and tested with Bun (`Bun.build` + `bun-plugin-tailwind`, `bun test` + happy-dom + Testing Library). Layout: left
-pane = lazy directory tree (expand a directory fetches `/api/tree`), top bar =
+pane = explorer-style lazy tree (folder/document icons, indent guides, highlighted
+active item, ancestors of the open item auto-expanded, expanded state remembered
+per index in localStorage, Collapse all, arrow-key navigation, `tree` ARIA roles;
+expanding a directory fetches `/api/tree`), top bar =
 search + reindex, main pane = concept view (frontmatter table, markdown body,
 outgoing links; internal links navigate) or edit form, or directory view
 (description, edit description, child list, "new concept here"). Markdown
