@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, Info } from "./api";
+import { api, BundleInfo, Info } from "./api";
 import ConceptForm from "./ConceptForm";
 import ConceptView from "./ConceptView";
 import DirView from "./DirView";
@@ -20,6 +20,18 @@ export default function App() {
   const readOnly = info?.read_only ?? true;
   const workspaceMode = info?.mode === "workspace";
   const scopeKey = scope ? `${scope.ws}/${scope.index}` : "";
+  const [bundle, setBundle] = useState<BundleInfo | null>(null);
+  const loadBundle = useCallback(() => {
+    if (!scope) { setBundle(null); return; }
+    api.bundleInfo().then(setBundle, (e) => setMessage(e.message));
+  }, [scopeKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(loadBundle, [loadBundle]);
+
+  const describeBundle = async () => {
+    const text = window.prompt("Index description (empty clears it)", bundle?.description ?? "");
+    if (text === null) return;
+    try { setBundle(await api.describeBundle(text.trim() ? text : null)); } catch (e) { setMessage((e as Error).message); }
+  };
 
   const reindex = async () => {
     try { const r = await api.reindex(); changed(); setMessage(`Reindexed ${r.count} directory listings.`); }
@@ -47,6 +59,8 @@ export default function App() {
       <header className="flex items-center gap-3 border-b border-stone-300 px-4 py-2 md:col-span-2 dark:border-stone-700">
         <a className="font-bold text-stone-900 dark:text-stone-100" href={workspaceMode ? "#/" : href.dir("")}>OKF Memory</a>
         {scope && <a href={scopeHref(scope)}>{`${scope.ws} / ${scope.index}`}</a>}
+        {scope && bundle && <span className="truncate text-sm text-stone-500">{bundle.description ?? "No description"}</span>}
+        {scope && bundle && !readOnly && <button className="text-xs" onClick={describeBundle}>Edit index description</button>}
         <code title={workspaceMode ? "workspaces location" : "bundle location"} className="flex-1 truncate text-xs text-stone-500">{info?.location}</code>
         {info?.read_only && <span className="rounded-full border border-stone-300 px-2 text-xs text-stone-500 dark:border-stone-700">read-only</span>}
         {showTree && <form role="search" onSubmit={(e) => { e.preventDefault(); if (q.trim()) go(href.search(q.trim())); }}>

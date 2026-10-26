@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
-from okf_core import Bundle
+from okf_core import Bundle, MemoryStorage
 from okf_core.workspace import WorkspaceRegistry, okf_home
 
 
@@ -91,9 +92,13 @@ def test_indexes_are_visible_top_level_dirs(tmp_path: Path):
 
 def test_create_index_and_resolve(tmp_path: Path):
     ws = WorkspaceRegistry(tmp_path).create("w")
-    p = ws.create_index("docs")
-    assert p == ws.path / "docs" and p.is_dir()
+    storage = ws.create_index("docs")
+    p = ws.path / "docs"
+    assert storage.location == str(p) and p.is_dir()
     assert ws.index_root("docs") == p
+    assert ws.bundle_storage("docs").location == str(p)
+    with pytest.raises(FileNotFoundError):
+        ws.bundle_storage("missing")
     with pytest.raises(FileExistsError):
         ws.create_index("docs")
     with pytest.raises(FileNotFoundError):
@@ -102,8 +107,115 @@ def test_create_index_and_resolve(tmp_path: Path):
 
 def test_load_index_returns_bundle(tmp_path: Path):
     ws = WorkspaceRegistry(tmp_path).create("w")
-    root = ws.create_index("docs")
-    (root / "a.md").write_text("---\ntype: Note\ntitle: A\n---\nbody\n")
+    ws.create_index("docs")
+    (ws.path / "docs" / "a.md").write_text("---\ntype: Note\ntitle: A\n---\nbody\n")
     bundle = ws.load_index("docs")
     assert isinstance(bundle, Bundle)
     assert "a" in bundle
+
+
+def _json(ws) -> Path:
+    return ws.path / ".okf" / "workspace.json"
+
+
+def test_description_roundtrip_writes_json(tmp_path: Path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    ws.create_index("notes", description="  Team notes  ")
+    assert ws.description("notes") == "Team notes"
+    assert json.loads(_json(ws).read_text()) == {
+        "version": 1,
+        "bundles": {"notes": {"description": "Team notes"}},
+    }
+    assert _json(ws).read_text().endswith("\n")
+
+
+def test_metadata_dir_is_not_an_index(tmp_path: Path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    ws.create_index("a", description="x")
+    assert (ws.path / ".okf").is_dir()
+    assert ws.indexes() == ["a"]
+
+
+@pytest.mark.parametrize("cleared", ["  ", "", None])
+def test_set_description_blank_or_none_clears(tmp_path: Path, cleared):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    ws.create_index("a", description="x")
+    assert ws.set_description("a", cleared) is None
+    assert ws.description("a") is None
+
+
+def test_set_description_too_long_raises(tmp_path: Path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    ws.create_index("a")
+    with pytest.raises(ValueError):
+        ws.set_description("a", "x" * 1001)
+    assert ws.set_description("a", "x" * 1000) == "x" * 1000
+
+
+def test_set_description_unknown_bundle_raises(tmp_path: Path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    with pytest.raises(FileNotFoundError):
+        ws.set_description("missing", "x")
+
+
+def test_hand_made_bundle_has_null_description_and_can_be_described(tmp_path: Path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    (ws.path / "manual").mkdir()
+    assert ws.bundles_info() == [{"name": "manual", "description": None}]
+    ws.set_description("manual", "Hand made")
+    assert ws.bundles_info() == [{"name": "manual", "description": "Hand made"}]
+
+
+def test_stale_entry_hidden_and_pruned_on_write(tmp_path: Path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    ws.create_index("a")
+    _json(ws).parent.mkdir()
+    _json(ws).write_text(json.dumps(
+        {"version": 1, "bundles": {"gone": {"description": "old"}, "a": {"description": None}}}
+    ))
+    assert ws.bundles_info() == [{"name": "a", "description": None}]
+    ws.set_description("a", "kept")
+    assert set(json.loads(_json(ws).read_text())["bundles"]) == {"a"}
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["{not json", '{"version": 2, "bundles": {}}', '{"version": 1, "bundles": []}', "[]"],
+)
+def test_corrupt_workspace_json_raises_and_is_not_overwritten(tmp_path: Path, text: str):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    ws.create_index("a")
+    _json(ws).parent.mkdir()
+    _json(ws).write_text(text)
+    with pytest.raises(ValueError):
+        ws.description("a")
+    with pytest.raises(ValueError):
+        ws.set_description("a", "x")
+    assert _json(ws).read_text() == text
+
+
+def test_workspace_on_memory_storage():
+    reg = WorkspaceRegistry(root=MemoryStorage())
+    ws = reg.create("w")
+    ws.create_index("b", "d")
+    assert [w.name for w in reg.list()] == ["w"]
+    assert ws.bundles_info() == [{"name": "b", "description": "d"}]
+    assert ws.path is None
+
+
+def test_create_index_with_invalid_description_creates_nothing(tmp_path: Path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    with pytest.raises(ValueError):
+        ws.create_index("big", "z" * 1001)
+    assert ws.indexes() == []
+    ws.create_index("big", "short")  # a retry succeeds
+    assert ws.description("big") == "short"
+
+
+def test_create_index_with_corrupt_workspace_json_creates_nothing(tmp_path: Path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    _json(ws).parent.mkdir()
+    _json(ws).write_text("{not json")
+    with pytest.raises(ValueError):
+        ws.create_index("b", "d")
+    assert ws.indexes() == []

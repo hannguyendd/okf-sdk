@@ -31,7 +31,14 @@ from okf_core.storage import (
     register_backend,
 )
 from okf_core.synthesizer import fallback_synthesizer
-from okf_core.workspace import Workspace, WorkspaceRegistry, okf_home
+from okf_core.workspace import (
+    MAX_DESCRIPTION_CHARS,
+    METADATA_DIR,
+    WORKSPACE_FILE,
+    Workspace,
+    WorkspaceRegistry,
+    okf_home,
+)
 
 __version__ = "0.1.0"
 
@@ -58,6 +65,9 @@ __all__ = [
     "path_to_concept_id",
     "regenerate_indexes",
     "fallback_synthesizer",
+    "MAX_DESCRIPTION_CHARS",
+    "METADATA_DIR",
+    "WORKSPACE_FILE",
     "Workspace",
     "WorkspaceRegistry",
     "okf_home",

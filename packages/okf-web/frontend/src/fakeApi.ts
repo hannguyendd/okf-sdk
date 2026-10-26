@@ -6,7 +6,10 @@ export function installFakeApi(opts: { readOnly?: boolean; search?: boolean; wor
     "tables/orders": { frontmatter: { type: "table", title: "Orders", tags: ["a"] }, body: "See [users](users.md)\n" },
     "tables/users": { frontmatter: { type: "table", title: "Users" }, body: "Users body" },
   };
-  const workspaces: { name: string; indexes: string[] }[] = [{ name: "work", indexes: ["notes"] }, { name: "empty", indexes: [] }];
+  const workspaces: { name: string; indexes: { name: string; description: string | null }[] }[] = [
+    { name: "work", indexes: [{ name: "notes", description: "Meeting notes" }] },
+    { name: "empty", indexes: [] },
+  ];
   const calls: { method: string; url: string; body?: Json }[] = [];
   const res = (data: unknown, status = 200) =>
     Promise.resolve(new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } }));
@@ -27,8 +30,14 @@ export function installFakeApi(opts: { readOnly?: boolean; search?: boolean; wor
     }
     const mi = p.match(/^\/api\/workspaces\/([^/]+)\/indexes$/);
     if (mi && method === "POST") {
-      workspaces.find((w) => w.name === mi[1])!.indexes.push(body!.name);
-      return res({ name: body!.name }, 201);
+      workspaces.find((w) => w.name === mi[1])!.indexes.push({ name: body!.name, description: null });
+      return res({ name: body!.name, description: null }, 201);
+    }
+    const ms = p.match(/^\/api\/workspaces\/([^/]+)\/indexes\/([^/]+)\/bundle(\/describe)?$/);
+    if (ms) {
+      const idx = workspaces.find((w) => w.name === ms[1])!.indexes.find((i) => i.name === ms[2])!;
+      if (ms[3]) idx.description = body!.description;
+      return res({ workspace: ms[1], bundle: ms[2], description: idx.description });
     }
     p = p.replace(/^\/api\/workspaces\/[^/]+\/indexes\/[^/]+/, "/api");
     if (p === "/api/tree") {
@@ -38,7 +47,10 @@ export function installFakeApi(opts: { readOnly?: boolean; search?: boolean; wor
     }
     if (p === "/api/search") {
       if (!opts.search) return res({ error: "embedding is not configured" }, 400);
-      return res([{ dir: "tables", path: "tables/_index.md", score: 0.91, excerpt: "Warehouse tables excerpt" }]);
+      return res([
+        { bundle: "notes", kind: "index", dir: "tables", path: "tables/_index.md", score: 0.91, excerpt: "Warehouse tables excerpt" },
+        { bundle: "notes", kind: "bundle", dir: "", path: null, score: 0.42, excerpt: "Meeting notes excerpt" },
+      ]);
     }
     if (p === "/api/reindex") return res({ action: "reindexed", count: 2, indexes: [] });
     if (p === "/api/describe") return res({ action: "described" });

@@ -1,63 +1,66 @@
-from pathlib import Path
 import asyncio
 from types import SimpleNamespace
 
 import pytest
-from mcp import types as mcp_types
+
+from okf_core import WorkspaceRegistry
 
 from okf_mcp import operations, server
 from okf_mcp.server import Settings, mcp
 
-
-class _FakeSession:
-    """Stand-in for the MCP ServerSession's ``list_roots``.
-
-    ``root_paths=None`` simulates a client without the roots capability (raises);
-    a list yields ``file://`` roots for those paths.
-    """
-
-    def __init__(self, root_paths):
-        self._root_paths = root_paths
-
-    async def list_roots(self):
-        if self._root_paths is None:
-            raise RuntimeError("client has no roots capability")
-        return mcp_types.ListRootsResult(
-            roots=[
-                mcp_types.Root(uri=f"file://{p}", name=None) for p in self._root_paths
-            ]
-        )
+_ENV = (
+    "OKF_WORKSPACE",
+    "OKF_BUNDLE",
+    "OKF_EMBEDDING_URL",
+    "OKF_EMBEDDING_MODEL",
+    "OKF_EMBEDDING_API_KEY",
+    "OKF_EMBEDDING_MAX_CHARS",
+)
 
 
-def _ctx(root_paths):
-    return SimpleNamespace(session=_FakeSession(root_paths))
+class _Session:
+    def check_client_capability(self, capability) -> bool:
+        return False  # no elicitation: ambiguity becomes an error
+
+
+def _ctx(headers=None):
+    request = SimpleNamespace(headers=headers) if headers is not None else None
+    return SimpleNamespace(session=_Session(), request_context=SimpleNamespace(request=request))
+
+
+@pytest.fixture
+def home(tmp_path, monkeypatch):
+    """OKF_HOME at tmp_path with workspace ``w`` holding bundles ``b`` and ``c``."""
+    monkeypatch.setenv("OKF_HOME", str(tmp_path))
+    for key in _ENV:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(server, "settings", Settings(_env_file=None))
+    ws = WorkspaceRegistry(tmp_path / "workspaces").create("w")
+    ws.create_index("b", "Billing data")
+    ws.create_index("c")
+    return tmp_path
 
 
 def _use_settings(monkeypatch, **env):
-    """Install a fresh Settings on the server module built only from ``env``."""
-    for key in ("OKF_STORE_ROOT", "OKF_BUNDLE_ROOT"):
-        monkeypatch.delenv(key, raising=False)
     for key, val in env.items():
         monkeypatch.setenv(key, str(val))
-    fresh = Settings(_env_file=None)
-    monkeypatch.setattr(server, "settings", fresh)
-    return fresh
+    monkeypatch.setattr(server, "settings", Settings(_env_file=None))
+
+
+def run(coro):
+    return asyncio.run(coro)
 
 
 def test_all_tools_registered():
-    names = {t.name for t in asyncio.run(mcp.list_tools())}
+    tools = asyncio.run(mcp.list_tools())
+    names = {t.name for t in tools}
     assert {
-        "add",
-        "patch",
-        "get",
-        "list",
-        "read_index",
-        "move",
-        "reindex",
-        "delete",
-        "describe",
-        "search",
+        "add", "patch", "get", "list", "read_index", "move", "reindex", "delete",
+        "describe", "search", "list_workspaces", "list_bundles", "create_bundle",
+        "describe_bundle",
     } <= names
+    assert not any("bundle_root" in t.inputSchema.get("properties", {}) for t in tools)
+    assert "create_workspace" not in names
 
 
 def test_tool_schema_excludes_ctx():
@@ -65,144 +68,145 @@ def test_tool_schema_excludes_ctx():
     assert "ctx" not in add_tool.inputSchema.get("properties", {})
 
 
-def test_settings_reads_dotenv(tmp_path, monkeypatch):
-    monkeypatch.delenv("OKF_BUNDLE_ROOT", raising=False)
-    target = tmp_path / "bundle"
-    target.mkdir()
-    (tmp_path / ".env").write_text(f"OKF_BUNDLE_ROOT={target}\n")
-    monkeypatch.chdir(tmp_path)
-    assert Path(Settings().bundle_root) == target
+def test_settings_read_workspace_and_bundle_env(monkeypatch):
+    monkeypatch.setenv("OKF_WORKSPACE", "w")
+    monkeypatch.setenv("OKF_BUNDLE", "b")
+    s = Settings(_env_file=None)
+    assert (s.workspace, s.bundle) == ("w", "b")
 
 
-def test_settings_reads_store_root(tmp_path, monkeypatch):
-    monkeypatch.delenv("OKF_BUNDLE_ROOT", raising=False)
-    monkeypatch.setenv("OKF_STORE_ROOT", str(tmp_path))
-    assert Path(Settings(_env_file=None).store_root) == tmp_path
-
-
-def test_root_prefers_explicit_arg(tmp_path, monkeypatch):
-    _use_settings(monkeypatch, OKF_STORE_ROOT=tmp_path, OKF_BUNDLE_ROOT=tmp_path)
-    target = tmp_path / "explicit"
-    target.mkdir()
-    got = asyncio.run(server._root(str(target), _ctx(["/whatever"])))
-    assert got == target.resolve()
-
-
-def test_root_errors_when_both_env_set(tmp_path, monkeypatch):
-    _use_settings(monkeypatch, OKF_STORE_ROOT=tmp_path, OKF_BUNDLE_ROOT=tmp_path)
-    with pytest.raises(ValueError):
-        asyncio.run(server._root(None, _ctx(["/whatever"])))
-
-
-def test_root_store_mode_uses_derived_folder(tmp_path, monkeypatch):
-    store = tmp_path / "store"
-    store.mkdir()
-    project = tmp_path / "proj" / "web-app"
-    _use_settings(monkeypatch, OKF_STORE_ROOT=store)
-    got = asyncio.run(server._root(None, _ctx([str(project)])))
-    assert got == store.resolve() / operations.derive_project_folder(project)
-    assert got.is_dir()
-
-
-def test_root_store_mode_falls_back_to_cwd(tmp_path, monkeypatch):
-    store = tmp_path / "store"
-    store.mkdir()
-    monkeypatch.chdir(tmp_path)
-    _use_settings(monkeypatch, OKF_STORE_ROOT=store)
-    got = asyncio.run(server._root(None, _ctx(None)))
-    assert got == store.resolve() / operations.derive_project_folder(tmp_path)
-
-
-def test_root_legacy_bundle_mode(tmp_path, monkeypatch):
-    bundle = tmp_path / "bundle"
-    bundle.mkdir()
-    _use_settings(monkeypatch, OKF_BUNDLE_ROOT=bundle)
-    got = asyncio.run(server._root(None, _ctx(None)))
-    assert got == bundle.resolve()
-
-
-def test_root_errors_when_nothing_configured(monkeypatch):
-    _use_settings(monkeypatch)
-    with pytest.raises(ValueError):
-        asyncio.run(server._root(None, _ctx(None)))
-
-
-_EMBED_ENV = (
-    "OKF_EMBEDDING_URL",
-    "OKF_EMBEDDING_MODEL",
-    "OKF_EMBEDDING_API_KEY",
-    "OKF_EMBEDDING_MAX_CHARS",
-    "OKF_VECTOR_DB",
-)
-
-
-def _clear_embed_env(monkeypatch):
-    for key in _EMBED_ENV:
+def test_settings_read_embedding_env_vars(monkeypatch):
+    for key in _ENV:
         monkeypatch.delenv(key, raising=False)
-
-
-def test_settings_read_embedding_env_vars(tmp_path, monkeypatch):
-    _clear_embed_env(monkeypatch)
     defaults = Settings(_env_file=None)
-    assert defaults.embedding_url is None
-    assert defaults.embedding_model is None
-    assert defaults.embedding_api_key is None
-    assert defaults.vector_db is None
+    assert (defaults.embedding_url, defaults.embedding_model, defaults.embedding_api_key) == (None, None, None)
     assert defaults.embedding_max_chars == 6000
-
     monkeypatch.setenv("OKF_EMBEDDING_URL", "http://h/v1")
     monkeypatch.setenv("OKF_EMBEDDING_MODEL", "m")
     monkeypatch.setenv("OKF_EMBEDDING_API_KEY", "k")
     monkeypatch.setenv("OKF_EMBEDDING_MAX_CHARS", "1234")
-    monkeypatch.setenv("OKF_VECTOR_DB", str(tmp_path / "v.db"))
     s = Settings(_env_file=None)
-    assert (s.embedding_url, s.embedding_model, s.embedding_api_key) == (
-        "http://h/v1",
-        "m",
-        "k",
+    assert (s.embedding_url, s.embedding_model, s.embedding_api_key, s.embedding_max_chars) == (
+        "http://h/v1", "m", "k", 1234,
     )
-    assert s.embedding_max_chars == 1234
-    assert s.vector_db == str(tmp_path / "v.db")
 
 
-def test_search_tool_passes_settings_and_root_to_operation(tmp_path, monkeypatch):
-    _clear_embed_env(monkeypatch)
-    bundle = tmp_path / "bundle"
-    bundle.mkdir()
-    _use_settings(
-        monkeypatch,
-        OKF_BUNDLE_ROOT=bundle,
-        OKF_EMBEDDING_URL="http://h/v1",
-        OKF_EMBEDDING_MODEL="m",
-        OKF_EMBEDDING_API_KEY="k",
-        OKF_EMBEDDING_MAX_CHARS=500,
-        OKF_VECTOR_DB=tmp_path / "v.db",
-    )
+def test_add_echoes_target_and_writes_into_bundle(home):
+    out = run(server.add(_ctx(), "t/x", {"type": "Note", "title": "X"}, "body", workspace="w", bundle="b"))
+    assert (out["workspace"], out["bundle"]) == ("w", "b")
+    assert (home / "workspaces" / "w" / "b" / "t" / "x.md").is_file()
+    got = run(server.get(_ctx(), "t/x", workspace="w", bundle="b"))
+    assert got["frontmatter"]["title"] == "X" and got["bundle"] == "b"
+
+
+def test_concept_tools_use_header_then_env_defaults(home, monkeypatch):
+    _use_settings(monkeypatch, OKF_WORKSPACE="w", OKF_BUNDLE="c")
+    out = run(server.add(_ctx(), "x", {"type": "Note", "title": "X"}, "", ))
+    assert out["bundle"] == "c"
+    out = run(server.add(_ctx({"x-okf-bundle": "b"}), "y", {"type": "Note", "title": "Y"}, ""))
+    assert out["bundle"] == "b"
+
+
+def test_ambiguous_bundle_without_elicitation_lists_choices(home):
+    with pytest.raises(ValueError, match="bundle=.*b, c"):
+        run(server.list_(_ctx(), workspace="w"))
+
+
+def test_list_and_read_index_wrap_items(home):
+    run(server.add(_ctx(), "t/x", {"type": "Note", "title": "X"}, "", workspace="w", bundle="b"))
+    listed = run(server.list_(_ctx(), workspace="w", bundle="b"))
+    assert (listed["workspace"], listed["bundle"]) == ("w", "b")
+    assert [c["id"] for c in listed["items"]] == ["t/x"]
+    idx = run(server.read_index(_ctx(), workspace="w", bundle="b"))
+    assert idx["bundle"] == "b" and idx["items"][0]["dir"] == ""
+
+
+def test_other_concept_tools_echo_target(home):
+    t = {"workspace": "w", "bundle": "b"}
+    run(server.add(_ctx(), "t/x", {"type": "Note", "title": "X"}, "", **t))
+    for out in (
+        run(server.patch(_ctx(), "t/x", {"title": "X2"}, None, **t)),
+        run(server.describe(_ctx(), "t", "Things", **t)),
+        run(server.move(_ctx(), "t/x", "u/x", **t)),
+        run(server.reindex(_ctx(), **t)),
+        run(server.delete(_ctx(), "u/x", **t)),
+    ):
+        assert (out["workspace"], out["bundle"]) == ("w", "b")
+
+
+def test_list_workspaces_counts_bundles(home):
+    WorkspaceRegistry(home / "workspaces").create("empty")
+    assert run(server.list_workspaces()) == [
+        {"name": "empty", "bundles": 0},
+        {"name": "w", "bundles": 2},
+    ]
+
+
+def test_list_bundles_includes_descriptions(home):
+    assert run(server.list_bundles(_ctx(), workspace="w")) == {
+        "workspace": "w",
+        "bundles": [
+            {"name": "b", "description": "Billing data"},
+            {"name": "c", "description": None},
+        ],
+    }
+
+
+def test_list_bundles_single_workspace_needs_no_argument(home):
+    assert run(server.list_bundles(_ctx()))["workspace"] == "w"
+
+
+def test_create_bundle_and_describe_bundle(home):
+    assert run(server.create_bundle(_ctx(), "n", "New one", workspace="w")) == {
+        "workspace": "w", "bundle": "n", "description": "New one",
+    }
+    assert run(server.describe_bundle(_ctx(), "Changed", bundle="n", workspace="w")) == {
+        "workspace": "w", "bundle": "n", "description": "Changed",
+    }
+    assert run(server.describe_bundle(_ctx(), None, bundle="n", workspace="w"))["description"] is None
+    with pytest.raises(FileExistsError):
+        run(server.create_bundle(_ctx(), "n", workspace="w"))
+
+
+def _capture_search(monkeypatch):
     seen = {}
 
-    def fake(root, query, top_k, dir, **kw):
-        seen.update(root=root, query=query, top_k=top_k, dir=dir, **kw)
-        return [{"path": "x/_index.md"}]
+    def fake(workspace, query, top_k, bundles, dir, **kw):
+        seen.update(workspace=workspace.name, query=query, top_k=top_k, bundles=bundles, dir=dir, **kw)
+        return [{"bundle": "b", "path": "x/_index.md"}]
 
-    monkeypatch.setattr(operations, "search_indexes", fake)
-    out = asyncio.run(server.search(_ctx(None), "find me", top_k=3, dir="x"))
-
-    assert out == [{"path": "x/_index.md"}]
-    assert seen["root"] == bundle.resolve()
-    assert (seen["query"], seen["top_k"], seen["dir"]) == ("find me", 3, "x")
-    cfg = seen["config"]
-    assert (cfg.url, cfg.model, cfg.api_key) == ("http://h/v1", "m", "k")
-    assert seen["max_chars"] == 500
-    assert seen["db_path"] == str(tmp_path / "v.db")
+    monkeypatch.setattr(operations, "search_workspace", fake)
+    return seen
 
 
-def test_search_tool_without_embedding_settings_errors_but_other_tools_work(
-    tmp_path, monkeypatch
-):
-    _clear_embed_env(monkeypatch)
-    bundle = tmp_path / "bundle"
-    bundle.mkdir()
-    _use_settings(monkeypatch, OKF_BUNDLE_ROOT=bundle)
+def test_search_scope_default_bundle_vs_all_vs_filter(home, monkeypatch):
+    _use_settings(monkeypatch, OKF_EMBEDDING_URL="http://h/v1", OKF_EMBEDDING_MODEL="m", OKF_EMBEDDING_MAX_CHARS=500)
+    seen = _capture_search(monkeypatch)
+
+    out = run(server.search(_ctx(), "q", workspace="w"))
+    assert out == {"workspace": "w", "bundles": ["b", "c"], "hits": [{"bundle": "b", "path": "x/_index.md"}]}
+    assert seen["bundles"] == ["b", "c"] and seen["max_chars"] == 500
+    assert (seen["config"].url, seen["config"].model) == ("http://h/v1", "m")
+
+    run(server.search(_ctx(), "q", bundles=["c"], top_k=3, dir="d", workspace="w"))
+    assert (seen["bundles"], seen["top_k"], seen["dir"]) == (["c"], 3, "d")
+
+    _use_settings(monkeypatch, OKF_WORKSPACE="w", OKF_BUNDLE="b")
+    out = run(server.search(_ctx(), "q"))
+    assert out["bundles"] == ["b"] and seen["bundles"] == ["b"]
+
+
+def test_search_without_embedding_settings_errors_but_other_tools_work(home):
     with pytest.raises(ValueError, match="OKF_EMBEDDING_URL"):
-        asyncio.run(server.search(_ctx(None), "anything"))
-    assert asyncio.run(server.list_(_ctx(None))) == []
+        run(server.search(_ctx(), "anything", workspace="w"))
+    assert run(server.list_(_ctx(), workspace="w", bundle="b"))["items"] == []
+
+
+def test_main_parses_transport_and_port(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(mcp, "run", lambda transport="stdio", **kw: seen.update(transport=transport))
+    server.main(["--transport", "streamable-http", "--port", "9000"])
+    assert seen["transport"] == "streamable-http"
+    assert (mcp.settings.host, mcp.settings.port) == ("127.0.0.1", 9000)
+    server.main([])
+    assert seen["transport"] == "stdio"

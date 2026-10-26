@@ -3,8 +3,10 @@ export interface DirEntry { name: string; dir: string; description: string | nul
 export interface ConceptMeta { id: string; type: string | null; title: string | null; description: string | null; tags: string[] }
 export interface Tree { dir: string; description: string | null; directories: DirEntry[]; concepts: ConceptMeta[] }
 export interface Concept { id: string; frontmatter: Record<string, unknown>; body: string; links_to: string[] }
-export interface Hit { dir: string; path: string; score: number; excerpt: string }
-export interface WorkspaceInfo { name: string; indexes: string[] }
+export interface Hit { bundle: string; kind: "index" | "bundle"; dir: string; path: string | null; score: number; excerpt: string }
+export interface IndexInfo { name: string; description: string | null }
+export interface WorkspaceInfo { name: string; indexes: IndexInfo[] }
+export interface BundleInfo { workspace: string; bundle: string; description: string | null }
 export interface DeleteResult { action: string; referenced_by?: string[] }
 
 import { scopeBase } from "./route";
@@ -42,5 +44,8 @@ export const api = {
     call<DeleteResult>("DELETE", `${scopeBase()}/concepts/${enc(id)}${force ? "?force=true" : ""}`),
   describe: (dir: string, description: string) => call("POST", `${scopeBase()}/describe`, { dir, description }),
   reindex: () => call<{ count: number }>("POST", `${scopeBase()}/reindex`),
+  bundleInfo: () => call<BundleInfo>("GET", `${scopeBase()}/bundle`),
+  describeBundle: (description: string | null) =>
+    call<BundleInfo>("POST", `${scopeBase()}/bundle/describe`, { description }),
   search: (q: string) => call<Hit[]>("GET", `${scopeBase()}/search?q=${encodeURIComponent(q)}&top_k=10`),
 };

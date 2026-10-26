@@ -6,28 +6,6 @@ from okf_core import LocalStorage, OKFDocument
 from okf_mcp import operations
 
 
-def test_resolve_prefers_arg(tmp_path):
-    other = tmp_path / "b"
-    other.mkdir()
-    assert operations.resolve_bundle_root(str(other), tmp_path) == other.resolve()
-
-
-def test_resolve_falls_back_to_env_default(tmp_path):
-    assert operations.resolve_bundle_root(None, tmp_path) == tmp_path.resolve()
-
-
-def test_resolve_requires_a_root():
-    with pytest.raises(ValueError):
-        operations.resolve_bundle_root(None, None)
-
-
-def test_resolve_rejects_non_directory(tmp_path):
-    f = tmp_path / "f.txt"
-    f.write_text("x")
-    with pytest.raises(ValueError):
-        operations.resolve_bundle_root(str(f), None)
-
-
 def test_concept_key_builds_nested_key():
     assert operations._concept_key("tables/orders") == "tables/orders.md"
 
@@ -695,58 +673,6 @@ def test_describe_log_entry_has_time_prefix(tmp_path):
     assert re.search(r"^\* \*\*\d{2}:\d{2}:\d{2}Z\*\* \*\*Update\*\*:", log, re.M)
 
 
-def test_derive_project_folder_shape(tmp_path):
-    name = operations.derive_project_folder(tmp_path / "web-app")
-    assert re.fullmatch(r"web-app-[0-9a-f]{8}", name)
-
-
-def test_derive_project_folder_is_deterministic(tmp_path):
-    project = tmp_path / "web-app"
-    assert operations.derive_project_folder(project) == operations.derive_project_folder(
-        project
-    )
-
-
-def test_derive_project_folder_distinguishes_same_basename(tmp_path):
-    a = tmp_path / "a" / "web-app"
-    b = tmp_path / "b" / "web-app"
-    assert operations.derive_project_folder(a) != operations.derive_project_folder(b)
-
-
-def test_derive_project_folder_slugifies_basename(tmp_path):
-    name = operations.derive_project_folder(tmp_path / "My App (v2)")
-    assert re.fullmatch(r"My-App-v2-[0-9a-f]{8}", name)
-
-
-def test_derive_project_folder_empty_basename_falls_back(tmp_path):
-    # Filesystem root has an empty ``.name``.
-    name = operations.derive_project_folder("/")
-    assert re.fullmatch(r"project-[0-9a-f]{8}", name)
-
-
-def test_resolve_store_bundle_root_creates_subfolder(tmp_path):
-    store = tmp_path / "store"
-    store.mkdir()
-    project = tmp_path / "proj" / "web-app"
-    root = operations.resolve_store_bundle_root(store, project)
-    assert root.is_dir()
-    assert root == store.resolve() / operations.derive_project_folder(project)
-
-
-def test_resolve_store_bundle_root_requires_existing_store(tmp_path):
-    with pytest.raises(ValueError):
-        operations.resolve_store_bundle_root(
-            tmp_path / "missing", tmp_path / "web-app"
-        )
-
-
-def test_resolve_store_bundle_root_rejects_file_store(tmp_path):
-    f = tmp_path / "store.txt"
-    f.write_text("x")
-    with pytest.raises(ValueError):
-        operations.resolve_store_bundle_root(f, tmp_path / "web-app")
-
-
 # ---- storage backends ------------------------------------------------------
 
 from okf_core import MemoryStorage, register_backend  # noqa: E402
@@ -802,37 +728,11 @@ def test_read_index_rejects_escape_on_storage():
         operations.read_index(MemoryStorage(), "../x")
 
 
-def test_resolve_bundle_root_uri_returns_storage():
-    mem = MemoryStorage()
-    mem.mkdir("")
-    register_backend("opsmem", lambda loc: mem)
-    assert operations.resolve_bundle_root("opsmem://b", None) is mem
+# --- search_workspace / create_bundle -------------------------------------
 
+import shutil  # noqa: E402
 
-def test_resolve_bundle_root_uri_requires_directory():
-    register_backend("opsmissing", lambda loc: MemoryStorage().child("nope"))
-    with pytest.raises(ValueError, match="not a directory"):
-        operations.resolve_bundle_root("opsmissing://b", None)
-
-
-def test_resolve_bundle_root_file_uri(tmp_path):
-    assert operations.resolve_bundle_root(tmp_path.as_uri(), None) == tmp_path.resolve()
-
-
-def test_resolve_store_bundle_root_uri_store():
-    mem = MemoryStorage()
-    mem.mkdir("")
-    register_backend("opsstore", lambda loc: mem)
-    child = operations.resolve_store_bundle_root("opsstore://s", "/home/me/web-app")
-    folder = operations.derive_project_folder("/home/me/web-app")
-    assert mem.is_dir(folder)
-    child.write_text("x.md", "1")
-    assert mem.read_text(f"{folder}/x.md") == "1"
-
-
-# --- search_indexes ---------------------------------------------------------
-
-from okf_core import MemoryStorage  # noqa: E402
+from okf_core import MemoryStorage, WorkspaceRegistry  # noqa: E402
 
 from okf_mcp.embeddings import EmbeddingConfig, EmbeddingError  # noqa: E402
 from okf_mcp.vector_store import VectorStoreError  # noqa: E402
@@ -858,59 +758,104 @@ class _SearchEmbedder:
         return [_search_vec(t) for t in texts]
 
 
-def _mem_bundle():
-    s = MemoryStorage()
-    s.write_text("tables/_index.md", "alpha tables")
-    s.write_text("views/_index.md", "beta views")
-    return s
+def _workspace(tmp_path):
+    ws = WorkspaceRegistry(tmp_path / "ws").create("w")
+    a = ws.create_index("a")
+    a.write_text("tables/_index.md", "alpha tables")
+    a.write_text("views/_index.md", "beta views")
+    b = ws.create_index("b", description="gamma billing data")
+    b.write_text("_index.md", "beta billing root")
+    return ws
 
 
-def _search(storage, query, tmp_path, emb, **kw):
+def _search(ws, query, tmp_path, emb, **kw):
     kw.setdefault("config", EmbeddingConfig(url="http://h/v1", model="m"))
-    return operations.search_indexes(
-        storage, query, db_path=tmp_path / "v.db", embed=emb, **kw
-    )
+    return operations.search_workspace(ws, query, db_path=tmp_path / "v.db", embed=emb, **kw)
 
 
-def test_search_returns_closest_index_first_with_read_index_shape(tmp_path):
-    hits = _search(_mem_bundle(), "beta please", tmp_path, _SearchEmbedder())
-    assert hits[0]["path"] == "views/_index.md"
-    assert hits[0]["dir"] == "views"
-    assert set(hits[0]) == {"dir", "path", "score", "excerpt"}
+def test_search_returns_closest_index_first_with_hit_shape(tmp_path):
+    hits = _search(_workspace(tmp_path), "alpha please", tmp_path, _SearchEmbedder())
+    assert hits[0] == {
+        "bundle": "a", "kind": "index", "dir": "tables", "path": "tables/_index.md",
+        "score": pytest.approx(1.0), "excerpt": "alpha tables",
+    }
+
+
+def test_search_workspace_all_bundles_by_default(tmp_path):
+    hits = _search(_workspace(tmp_path), "beta", tmp_path, _SearchEmbedder(), top_k=10)
+    assert {h["bundle"] for h in hits} == {"a", "b"}
+
+
+def test_search_workspace_bundle_filter(tmp_path):
+    hits = _search(_workspace(tmp_path), "beta", tmp_path, _SearchEmbedder(), bundles=["a"], top_k=10)
+    assert hits and {h["bundle"] for h in hits} == {"a"}
+
+
+def test_search_workspace_unknown_bundle_raises(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        _search(_workspace(tmp_path), "beta", tmp_path, _SearchEmbedder(), bundles=["nope"])
+
+
+def test_search_workspace_dir_needs_single_bundle(tmp_path):
+    ws, emb = _workspace(tmp_path), _SearchEmbedder()
+    with pytest.raises(ValueError, match="exactly one bundle"):
+        _search(ws, "beta", tmp_path, emb, dir="views")
+    hits = _search(ws, "beta", tmp_path, emb, bundles=["a"], dir="views")
+    assert [h["path"] for h in hits] == ["views/_index.md"]
+
+
+def test_search_workspace_finds_bundle_description(tmp_path):
+    hits = _search(_workspace(tmp_path), "gamma", tmp_path, _SearchEmbedder())
+    assert hits[0]["kind"] == "bundle" and hits[0]["bundle"] == "b"
+    assert hits[0]["excerpt"] == "gamma billing data" and hits[0]["path"] is None
+
+
+def test_search_workspace_ignores_deleted_bundle(tmp_path):
+    ws, emb = _workspace(tmp_path), _SearchEmbedder()
+    _search(ws, "gamma", tmp_path, emb, top_k=10)
+    shutil.rmtree(ws.path / "b")
+    hits = _search(ws, "gamma", tmp_path, emb, top_k=10)
+    assert all(h["bundle"] != "b" for h in hits)
 
 
 def test_search_syncs_before_querying(tmp_path):
-    s, emb = _mem_bundle(), _SearchEmbedder()
-    _search(s, "gamma", tmp_path, emb)
-    s.write_text("later/_index.md", "gamma later")
-    hits = _search(s, "gamma", tmp_path, emb)
+    ws, emb = _workspace(tmp_path), _SearchEmbedder()
+    _search(ws, "delta", tmp_path, emb)
+    ws.bundle_storage("a").write_text("later/_index.md", "delta later")
+    hits = _search(ws, "delta", tmp_path, emb)
     assert hits[0]["path"] == "later/_index.md"
+
+
+def test_search_reembeds_changed_bundle_description(tmp_path):
+    ws, emb = _workspace(tmp_path), _SearchEmbedder()
+    _search(ws, "gamma", tmp_path, emb)
+    ws.set_description("b", "delta new purpose")
+    hits = _search(ws, "delta", tmp_path, emb)
+    assert hits[0]["kind"] == "bundle" and hits[0]["excerpt"] == "delta new purpose"
 
 
 @pytest.mark.parametrize("query", ["", "   "])
 def test_search_rejects_blank_query_without_embedding(tmp_path, query):
     emb = _SearchEmbedder()
     with pytest.raises(ValueError):
-        _search(_mem_bundle(), query, tmp_path, emb)
+        _search(_workspace(tmp_path), query, tmp_path, emb)
     assert emb.calls == []
 
 
 @pytest.mark.parametrize("top_k", [0, 21])
 def test_search_rejects_top_k_out_of_range(tmp_path, top_k):
     with pytest.raises(ValueError):
-        _search(_mem_bundle(), "alpha", tmp_path, _SearchEmbedder(), top_k=top_k)
+        _search(_workspace(tmp_path), "alpha", tmp_path, _SearchEmbedder(), top_k=top_k)
 
 
 def test_search_rejects_dir_escaping_bundle(tmp_path):
     with pytest.raises(ValueError):
-        _search(_mem_bundle(), "alpha", tmp_path, _SearchEmbedder(), dir="../x")
+        _search(_workspace(tmp_path), "alpha", tmp_path, _SearchEmbedder(), bundles=["a"], dir="../x")
 
 
 def test_search_errors_when_embedding_not_configured(tmp_path):
     with pytest.raises(ValueError, match="OKF_EMBEDDING_URL.*OKF_EMBEDDING_MODEL"):
-        operations.search_indexes(
-            _mem_bundle(), "alpha", config=None, db_path=tmp_path / "v.db"
-        )
+        operations.search_workspace(_workspace(tmp_path), "alpha", config=None, db_path=tmp_path / "v.db")
 
 
 def test_search_raises_when_embedder_fails(tmp_path):
@@ -918,21 +863,49 @@ def test_search_raises_when_embedder_fails(tmp_path):
         raise EmbeddingError("down")
 
     with pytest.raises(EmbeddingError):
-        _search(_mem_bundle(), "alpha", tmp_path, boom)
+        _search(_workspace(tmp_path), "alpha", tmp_path, boom)
 
 
-def test_search_on_non_local_storage_requires_db_path():
-    with pytest.raises(VectorStoreError, match="OKF_VECTOR_DB"):
-        operations.search_indexes(
-            _mem_bundle(),
-            "alpha",
-            config=EmbeddingConfig(url="http://h/v1", model="m"),
-            embed=_SearchEmbedder(),
+def test_search_default_db_is_in_workspace_metadata(tmp_path):
+    ws = _workspace(tmp_path)
+    operations.search_workspace(
+        ws, "alpha", config=EmbeddingConfig(url="http://h/v1", model="m"), embed=_SearchEmbedder()
+    )
+    assert (ws.path / ".okf" / "vectors.db").is_file()
+    assert ws.indexes() == ["a", "b"]
+
+
+def test_search_on_non_local_workspace_requires_local_db():
+    ws = WorkspaceRegistry(MemoryStorage()).create("w")
+    with pytest.raises(VectorStoreError):
+        operations.search_workspace(
+            ws, "alpha", config=EmbeddingConfig(url="http://h/v1", model="m"), embed=_SearchEmbedder()
         )
 
 
-def test_search_on_empty_bundle_returns_empty_list(tmp_path):
-    assert _search(MemoryStorage(), "alpha", tmp_path, _SearchEmbedder()) == []
+def test_search_on_empty_workspace_returns_empty_list(tmp_path):
+    ws = WorkspaceRegistry(tmp_path / "ws").create("w")
+    assert _search(ws, "alpha", tmp_path, _SearchEmbedder()) == []
+
+
+def test_create_bundle_is_immediately_browsable_with_description(tmp_path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    assert operations.create_bundle(ws, "n", " d ") == {"bundle": "n", "description": "d"}
+    assert operations.read_index(ws.bundle_storage("n")) == []
+    assert operations.list_concepts(ws.bundle_storage("n")) == []
+    assert ws.description("n") == "d"
+
+
+def test_create_bundle_without_description(tmp_path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    assert operations.create_bundle(ws, "n") == {"bundle": "n", "description": None}
+
+
+def test_create_bundle_existing_raises(tmp_path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    operations.create_bundle(ws, "n")
+    with pytest.raises(FileExistsError):
+        operations.create_bundle(ws, "n")
 
 
 def test_write_tools_never_touch_embedder_or_vector_file(tmp_path, monkeypatch):
@@ -950,3 +923,17 @@ def test_write_tools_never_touch_embedder_or_vector_file(tmp_path, monkeypatch):
     operations.reindex_bundle(root)
     operations.delete_concept(root, "models/orders", False)
     assert not (tmp_path / "bundle.vectors.db").exists()
+
+
+def test_search_after_dimension_change_still_covers_every_bundle(tmp_path):
+    ws = _workspace(tmp_path)
+    _search(ws, "beta", tmp_path, _SearchEmbedder(), top_k=10)
+
+    class _Wider(_SearchEmbedder):  # same model name, new dimension
+        def __call__(self, texts):
+            self.calls.append(list(texts))
+            return [_search_vec(t) + [0.0] for t in texts]
+
+    ws.bundle_storage("b").write_text("x/_index.md", "beta extra")  # only b changed
+    hits = _search(ws, "beta", tmp_path, _Wider(), top_k=10)
+    assert {h["bundle"] for h in hits} == {"a", "b"}
