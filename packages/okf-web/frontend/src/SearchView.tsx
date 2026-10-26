@@ -16,11 +16,13 @@ export default function SearchView({ q }: { q: string }) {
   return (
     <article>
       <h1>Search: {q}</h1>
-      <p className="text-stone-500">Semantic match over directory listings (<code>_index.md</code>).</p>
+      <p className="text-stone-500">Semantic match over directory listings (<code>_index.md</code>) and the bundle description.</p>
       {hits.length === 0 && <p>No matches.</p>}
       <ul className="list-none p-0">{hits.map((h) => (
-        <li key={h.path}>
-          <a href={href.dir(h.dir)}>{h.dir || "(root)"}</a> <span className="rounded-full border border-stone-300 px-2 text-xs text-stone-500 dark:border-stone-700">{h.score.toFixed(2)}</span>
+        <li key={`${h.bundle}:${h.path ?? ""}`}>
+          {h.kind === "bundle"
+            ? <a href={href.dir("")}><span className="tag">bundle</span> {h.bundle}</a>
+            : <a href={href.dir(h.dir)}>{h.dir || "(root)"}</a>} <span className="rounded-full border border-stone-300 px-2 text-xs text-stone-500 dark:border-stone-700">{h.score.toFixed(2)}</span>
           <pre className="overflow-auto whitespace-pre-wrap rounded-md bg-stone-200 p-2.5 dark:bg-stone-800">{h.excerpt}</pre>
         </li>
       ))}</ul>

@@ -1,9 +1,12 @@
-export interface Info { location: string; read_only: boolean; search_enabled: boolean }
+export interface Info {
+  location: string; read_only: boolean; search_enabled: boolean;
+  workspace: string; bundle: string; description: string | null;
+}
 export interface DirEntry { name: string; dir: string; description: string | null }
 export interface ConceptMeta { id: string; type: string | null; title: string | null; description: string | null; tags: string[] }
 export interface Tree { dir: string; description: string | null; directories: DirEntry[]; concepts: ConceptMeta[] }
 export interface Concept { id: string; frontmatter: Record<string, unknown>; body: string; links_to: string[] }
-export interface Hit { dir: string; path: string; score: number; excerpt: string }
+export interface Hit { bundle: string; kind: "index" | "bundle"; dir: string; path: string | null; score: number; excerpt: string }
 export interface DeleteResult { action: string; referenced_by?: string[] }
 
 export class ApiError extends Error {}
@@ -35,5 +38,7 @@ export const api = {
     call<DeleteResult>("DELETE", `/api/concepts/${enc(id)}${force ? "?force=true" : ""}`),
   describe: (dir: string, description: string) => call("POST", "/api/describe", { dir, description }),
   reindex: () => call<{ count: number }>("POST", "/api/reindex"),
+  describeBundle: (description: string | null) =>
+    call<{ workspace: string; bundle: string; description: string | null }>("POST", "/api/bundle/describe", { description }),
   search: (q: string) => call<Hit[]>("GET", `/api/search?q=${encodeURIComponent(q)}&top_k=10`),
 };

@@ -7,6 +7,7 @@ export function installFakeApi(opts: { readOnly?: boolean; search?: boolean } = 
     "tables/users": { frontmatter: { type: "table", title: "Users" }, body: "Users body" },
   };
   const calls: { method: string; url: string; body?: Json }[] = [];
+  let description: string | null = "Billing data";
   const res = (data: unknown, status = 200) =>
     Promise.resolve(new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } }));
   const meta = (id: string) => ({ id, type: concepts[id].frontmatter.type, title: concepts[id].frontmatter.title, description: null, tags: concepts[id].frontmatter.tags ?? [] });
@@ -17,7 +18,11 @@ export function installFakeApi(opts: { readOnly?: boolean; search?: boolean } = 
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ method, url: url.pathname + url.search, body });
     const p = url.pathname;
-    if (p === "/api/info") return res({ location: "/mem", read_only: !!opts.readOnly, search_enabled: !!opts.search });
+    if (p === "/api/info") return res({ location: "/mem", read_only: !!opts.readOnly, search_enabled: !!opts.search, workspace: "w", bundle: "b", description });
+    if (p === "/api/bundle/describe") {
+      description = body!.description;
+      return res({ workspace: "w", bundle: "b", description });
+    }
     if (p === "/api/tree") {
       const dir = url.searchParams.get("dir") ?? "";
       if (dir === "") return res({ dir, description: null, directories: [{ name: "tables", dir: "tables", description: "Warehouse tables" }], concepts: [] });
@@ -25,7 +30,10 @@ export function installFakeApi(opts: { readOnly?: boolean; search?: boolean } = 
     }
     if (p === "/api/search") {
       if (!opts.search) return res({ error: "embedding is not configured" }, 400);
-      return res([{ dir: "tables", path: "tables/_index.md", score: 0.91, excerpt: "Warehouse tables excerpt" }]);
+      return res([
+        { bundle: "b", kind: "index", dir: "tables", path: "tables/_index.md", score: 0.91, excerpt: "Warehouse tables excerpt" },
+        { bundle: "b", kind: "bundle", dir: "", path: null, score: 0.42, excerpt: "Billing data excerpt" },
+      ]);
     }
     if (p === "/api/reindex") return res({ action: "reindexed", count: 2, indexes: [] });
     if (p === "/api/describe") return res({ action: "described" });

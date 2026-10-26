@@ -152,3 +152,62 @@ it("does not send the stale timestamp when editing", async () => {
   await waitFor(() => expect(api.calls.some((c) => c.method === "PATCH")).toBe(true));
   expect(api.calls.find((c) => c.method === "PATCH")!.body!.frontmatter).not.toHaveProperty("timestamp");
 });
+
+describe("bundle description", () => {
+  it("shows workspace / bundle and its description in the header", async () => {
+    installFakeApi();
+    render(<App />);
+    const header = await screen.findByRole("banner");
+    expect(await within(header).findByText("w / b")).toBeInTheDocument();
+    expect(within(header).getByText("Billing data")).toBeInTheDocument();
+  });
+
+  it("edits the bundle description via /api/bundle/describe", async () => {
+    const api = installFakeApi();
+    vi.spyOn(window, "prompt").mockReturnValue("New purpose");
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Edit bundle description" }));
+    expect(await screen.findByText("New purpose")).toBeInTheDocument();
+    const call = api.calls.find((c) => c.url === "/api/bundle/describe")!;
+    expect(call.method).toBe("POST");
+    expect(call.body).toEqual({ description: "New purpose" });
+  });
+
+  it("an empty prompt clears the bundle description", async () => {
+    const api = installFakeApi();
+    vi.spyOn(window, "prompt").mockReturnValue("");
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Edit bundle description" }));
+    expect(await screen.findByText("No description")).toBeInTheDocument();
+    expect(api.calls.find((c) => c.url === "/api/bundle/describe")!.body).toEqual({ description: null });
+  });
+
+  it("a cancelled prompt changes nothing", async () => {
+    const api = installFakeApi();
+    vi.spyOn(window, "prompt").mockReturnValue(null);
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Edit bundle description" }));
+    expect(api.calls.some((c) => c.url === "/api/bundle/describe")).toBe(false);
+  });
+
+  it("hides the edit control when read-only", async () => {
+    installFakeApi({ readOnly: true });
+    render(<App />);
+    expect(await screen.findByText("Billing data")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit bundle description" })).toBeNull();
+  });
+
+  it("renders a bundle-description search hit linking to the bundle root", async () => {
+    installFakeApi({ search: true });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(await screen.findByRole("searchbox"), "billing{Enter}");
+    const main = screen.getByRole("main");
+    const link = await within(main).findByRole("link", { name: "bundle b" });
+    expect(link.getAttribute("href")).toBe("#/d/");
+    expect(within(main).getByText("Billing data excerpt")).toBeInTheDocument();
+  });
+});
