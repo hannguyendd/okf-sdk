@@ -1,4 +1,4 @@
-"""Starlette HTTP API over ``okf_mcp.operations`` for one fixed bundle root."""
+"""Starlette HTTP API over ``okf_mcp.operations`` for one bundle of a workspace."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
 
-from okf_core import INDEX_FILENAME, RESERVED_STEMS, OKFDocument, Storage, open_storage
+from okf_core import INDEX_FILENAME, RESERVED_STEMS, OKFDocument, Storage, Workspace
 from okf_mcp import operations
 
 
@@ -53,15 +53,15 @@ def _tree(storage: Storage, dir: str | None) -> dict:
 
 
 def create_app(
-    bundle_root,
+    workspace: Workspace,
+    bundle: str,
     *,
     read_only: bool = False,
     search_config=None,
     search_max_chars: int = 6000,
-    vector_db: str | None = None,
     static_dir: Path | str | None = None,
 ) -> Starlette:
-    storage = open_storage(bundle_root)
+    storage = workspace.bundle_storage(bundle)
 
     def guard() -> None:
         if read_only:
@@ -98,17 +98,24 @@ def create_app(
             "location": storage.location,
             "read_only": read_only,
             "search_enabled": search_config is not None,
+            "workspace": workspace.name,
+            "bundle": bundle,
+            "description": workspace.description(bundle),
         }
 
+    def describe_bundle(request, body):
+        stored = workspace.set_description(bundle, body["description"])
+        return {"workspace": workspace.name, "bundle": bundle, "description": stored}
+
     def search(request, body):
-        return operations.search_indexes(
-            storage,
+        return operations.search_workspace(
+            workspace,
             q(request, "q", ""),
             int(q(request, "top_k", 5)),
+            [bundle],
             q(request, "dir"),
             config=search_config,
             max_chars=search_max_chars,
-            db_path=vector_db,
         )
 
     routes = [
@@ -185,6 +192,7 @@ def create_app(
             methods=["POST"],
         ),
         Route("/api/search", handler(search)),
+        Route("/api/bundle/describe", handler(describe_bundle, write=True), methods=["POST"]),
     ]
 
     if static_dir is not None:

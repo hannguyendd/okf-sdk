@@ -1,47 +1,63 @@
 import pytest
+from starlette.testclient import TestClient
 
+from okf_core import WorkspaceRegistry
 from okf_web.server import build_app, parse_args
 
 
-def test_requires_a_root(tmp_path, monkeypatch):
-    monkeypatch.delenv("OKF_BUNDLE_ROOT", raising=False)
-    monkeypatch.delenv("OKF_STORE_ROOT", raising=False)
-    with pytest.raises(SystemExit):
+@pytest.fixture
+def home(tmp_path, monkeypatch):
+    monkeypatch.setenv("OKF_HOME", str(tmp_path))
+    for key in ("OKF_WORKSPACE", "OKF_BUNDLE"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.chdir(tmp_path)  # keep a stray .env out of Settings
+    return WorkspaceRegistry(tmp_path / "workspaces")
+
+
+def _info(app):
+    return TestClient(app).get("/api/info").json()
+
+
+def test_no_workspace_exits(home):
+    with pytest.raises(SystemExit, match="no workspaces"):
         build_app(parse_args([]))
 
 
-def test_bundle_root_flag_and_read_only(tmp_path, monkeypatch):
-    from starlette.testclient import TestClient
-
-    monkeypatch.delenv("OKF_STORE_ROOT", raising=False)
-    app = build_app(parse_args(["--bundle-root", str(tmp_path), "--read-only"]))
-    info = TestClient(app).get("/api/info").json()
-    assert info["read_only"] is True and info["search_enabled"] is False
+def test_single_workspace_and_bundle_auto_selected(home):
+    home.create("w").create_index("b")
+    info = _info(build_app(parse_args([])))
+    assert (info["workspace"], info["bundle"]) == ("w", "b")
 
 
-def test_store_mode_partitions_by_project(tmp_path, monkeypatch):
-    from starlette.testclient import TestClient
-
-    monkeypatch.delenv("OKF_BUNDLE_ROOT", raising=False)
-    store, project = tmp_path / "store", tmp_path / "proj"
-    store.mkdir(), project.mkdir()
-    monkeypatch.setenv("OKF_STORE_ROOT", str(store))
-    app = build_app(parse_args(["--project", str(project)]))
-    loc = TestClient(app).get("/api/info").json()["location"]
-    assert loc.startswith(str(store)) and "proj-" in loc
+def test_flags_select_target_and_read_only(home):
+    for name in ("w", "v"):
+        ws = home.create(name)
+        ws.create_index("a")
+        ws.create_index("b")
+    info = _info(build_app(parse_args(["--workspace", "v", "--bundle", "b", "--read-only"])))
+    assert (info["workspace"], info["bundle"], info["read_only"]) == ("v", "b", True)
+    assert info["search_enabled"] is False
 
 
-def test_both_roots_is_an_error(tmp_path, monkeypatch):
-    monkeypatch.setenv("OKF_STORE_ROOT", str(tmp_path))
-    monkeypatch.setenv("OKF_BUNDLE_ROOT", str(tmp_path))
-    with pytest.raises(SystemExit):
+def test_env_selects_target(home, monkeypatch):
+    ws = home.create("w")
+    ws.create_index("a")
+    ws.create_index("b", "Bee")
+    monkeypatch.setenv("OKF_WORKSPACE", "w")
+    monkeypatch.setenv("OKF_BUNDLE", "b")
+    info = _info(build_app(parse_args([])))
+    assert (info["workspace"], info["bundle"], info["description"]) == ("w", "b", "Bee")
+
+
+def test_ambiguous_bundle_exits_listing_choices(home):
+    ws = home.create("w")
+    ws.create_index("a")
+    ws.create_index("b")
+    with pytest.raises(SystemExit, match="a, b"):
         build_app(parse_args([]))
 
 
-def test_search_enabled_when_embedding_env_set(tmp_path, monkeypatch):
-    from starlette.testclient import TestClient
-
-    monkeypatch.setenv("OKF_EMBEDDING_URL", "http://x/v1")
-    monkeypatch.setenv("OKF_EMBEDDING_MODEL", "m")
-    app = build_app(parse_args(["--bundle-root", str(tmp_path)]))
-    assert TestClient(app).get("/api/info").json()["search_enabled"] is True
+def test_missing_named_bundle_exits(home):
+    home.create("w").create_index("a")
+    with pytest.raises(SystemExit, match="no bundle 'zz'"):
+        build_app(parse_args(["--bundle", "zz"]))
