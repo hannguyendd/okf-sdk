@@ -19,7 +19,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--read-only", action="store_true", help="disable all write endpoints")
     p.add_argument("--host", default="127.0.0.1", help="bind address (no auth: keep it local)")
     p.add_argument("--port", type=int, default=8765)
+    p.add_argument(
+        "--static",
+        type=Path,
+        metavar="DIR",
+        help="serve this built frontend instead of the bundled one (e.g. packages/okf-web2/dist)",
+    )
     return p.parse_args(argv)
+
+
+def _static_dir(override: Path | None) -> Path | None:
+    if override is not None:
+        if not (override / "index.html").is_file():
+            raise SystemExit(f"okf-web: --static {override}: no index.html (build the frontend first)")
+        return override
+    return STATIC_DIR if (STATIC_DIR / "index.html").is_file() else None
 
 
 def build_app(args: argparse.Namespace):
@@ -39,7 +53,7 @@ def build_app(args: argparse.Namespace):
         read_only=args.read_only,
         search_config=config,
         search_max_chars=settings.embedding_max_chars,
-        static_dir=STATIC_DIR if (STATIC_DIR / "index.html").is_file() else None,
+        static_dir=_static_dir(args.static),
     )
 
 

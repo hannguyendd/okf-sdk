@@ -34,3 +34,18 @@ def test_root_mode_flags_are_gone():
     for flag in ("--bundle-root", "--project", "--workspaces"):
         with pytest.raises(SystemExit):
             parse_args([flag, "x"] if flag != "--workspaces" else [flag])
+
+
+def test_static_flag_serves_another_frontend(home, tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<p>okf-web2</p>")
+    c = TestClient(build_app(parse_args(["--static", str(dist)])))
+    assert c.get("/").text == "<p>okf-web2</p>"
+    assert c.get("/w/x/y").text == "<p>okf-web2</p>"  # SPA fallback
+    assert c.get("/api/info").json()["mode"] == "workspace"
+
+
+def test_static_flag_requires_a_build(home, tmp_path):
+    with pytest.raises(SystemExit, match="no index.html"):
+        build_app(parse_args(["--static", str(tmp_path / "missing")]))

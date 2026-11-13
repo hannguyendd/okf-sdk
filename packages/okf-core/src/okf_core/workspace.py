@@ -2,7 +2,8 @@
 
 A *workspace* is a git-repo-shaped directory; an *index* is a collection of
 concepts inside it, and is exactly one bundle (a visible top-level directory).
-Workspace metadata (bundle descriptions) lives in ``<workspace>/.okf/``, which
+Workspace metadata (bundle descriptions, the workspace colour) lives in
+``<workspace>/.okf/``, which
 the hidden-name rule keeps from ever being mistaken for an index.
 """
 from __future__ import annotations
@@ -20,6 +21,8 @@ OKF_HOME_ENV = "OKF_HOME"
 METADATA_DIR = ".okf"
 WORKSPACE_FILE = "workspace.json"
 MAX_DESCRIPTION_CHARS = 1000
+#: Colours a workspace may be tagged with (UI accent; names, not hex values).
+WORKSPACE_COLORS = ("yellow", "pink", "green", "blue", "red", "orange", "purple")
 _WORKSPACE_FILE_VERSION = 1
 _NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
@@ -107,7 +110,7 @@ class Workspace:
     def meta_storage(self) -> Storage:
         return self.storage.child(METADATA_DIR)
 
-    # -- bundle descriptions (``.okf/workspace.json``) -----------------------
+    # -- metadata (``.okf/workspace.json``) ---------------------------------
 
     def _read_meta(self) -> dict:
         key = f"{METADATA_DIR}/{WORKSPACE_FILE}"
@@ -130,6 +133,12 @@ class Workspace:
             )
         return data
 
+    def _write_meta(self, data: dict) -> None:
+        self.storage.write_text(
+            f"{METADATA_DIR}/{WORKSPACE_FILE}",
+            json.dumps(data, indent=2, sort_keys=True) + "\n",
+        )
+
     def _entry(self, data: dict, name: str) -> str | None:
         entry = data["bundles"].get(name)
         description = entry.get("description") if isinstance(entry, dict) else None
@@ -149,11 +158,29 @@ class Workspace:
             bundles = {k: v for k, v in data["bundles"].items() if k in live}
             bundles[name] = {"description": cleaned}
             data["bundles"] = bundles
-            self.storage.write_text(
-                f"{METADATA_DIR}/{WORKSPACE_FILE}",
-                json.dumps(data, indent=2, sort_keys=True) + "\n",
-            )
+            self._write_meta(data)
         return cleaned
+
+    def color(self) -> str | None:
+        """The workspace's colour (one of ``WORKSPACE_COLORS``), or ``None``."""
+        color = self._read_meta().get("color")
+        return color if color in WORKSPACE_COLORS else None
+
+    def set_color(self, color: str | None) -> str | None:
+        """Set (or clear, with ``None``/blank) the workspace colour; returns it."""
+        color = color.strip() if isinstance(color, str) else None
+        if not color:
+            color = None
+        elif color not in WORKSPACE_COLORS:
+            raise ValueError(f"Invalid color {color!r}; choose one of {', '.join(WORKSPACE_COLORS)}")
+        with self.storage.lock():
+            data = self._read_meta()
+            if color is None:
+                data.pop("color", None)
+            else:
+                data["color"] = color
+            self._write_meta(data)
+        return color
 
     def bundles_info(self) -> list[dict]:
         """``[{"name", "description"}]`` for every index, sorted by name."""

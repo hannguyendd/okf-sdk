@@ -522,6 +522,52 @@ def describe_directory(
     }
 
 
+def create_directory(
+    bundle_root: "Path | str | Storage", dir: str, description: str = ""
+) -> dict:
+    """Create an empty directory by writing its ``_index.md`` listing.
+
+    A directory exists once it holds a ``.md`` file, so its listing (carrying
+    the optional authored ``description``) is what brings an empty directory
+    into being on every storage backend. Appends a Creation entry to the new
+    directory's ``_log.md`` and reindexes. Fails if ``dir`` is the bundle root,
+    escapes it, has an invalid segment, or already exists.
+    """
+    storage = open_storage(bundle_root)
+    target = _clean_dir(dir)
+    if not target:
+        raise ValueError("dir must name a directory below the bundle root")
+    parse_concept_id(target)  # every segment must be a valid id segment
+    desc = description.strip()
+    with storage.lock():
+        if storage.is_dir(target) or storage.exists(target):
+            raise FileExistsError(f"directory already exists: {target}")
+        index_key = posixpath.join(target, INDEX_FILENAME)
+        storage.mkdir(target)
+        # IDX-02: a listing needs at least one section heading, even when empty.
+        body = "# Concepts\n"
+        storage.write_text(
+            index_key,
+            OKFDocument(frontmatter={"description": desc}, body=body).serialize() if desc else body,
+        )
+        log_key = _log_key(target)
+        dt = _now_utc()
+        _append_log(
+            storage,
+            log_key,
+            f"* **{_utc_time(dt)}** **Creation**: Created this directory.",
+            _utc_date(dt),
+        )
+        indexes = regenerate_indexes(storage)
+    return {
+        "dir": target,
+        "action": "created",
+        "description": desc or None,
+        "log": log_key,
+        "indexes": list(indexes),
+    }
+
+
 _MAX_TOP_K = 20
 
 

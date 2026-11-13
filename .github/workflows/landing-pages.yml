@@ -1,0 +1,51 @@
+# Publishes the OK, Fine Memory landing page (packages/okf-web2, landing.html)
+# to GitHub Pages as the site's index.html. Only the landing page is useful
+# there: the notebook app itself needs the okf-web API running locally.
+#
+# One-time repo setup (admin): Settings → Pages → Source: "GitHub Actions".
+name: Landing page
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/okf-web2/**"
+      - ".github/workflows/landing-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/okf-web2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run test
+      # relative base so the page works under https://<owner>.github.io/<repo>/
+      - run: bunx vite build --base=./ --outDir site --emptyOutDir
+      - run: cp site/landing.html site/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: packages/okf-web2/site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

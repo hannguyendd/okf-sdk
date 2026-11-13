@@ -219,3 +219,30 @@ def test_create_index_with_corrupt_workspace_json_creates_nothing(tmp_path: Path
     with pytest.raises(ValueError):
         ws.create_index("b", "d")
     assert ws.indexes() == []
+
+
+def test_color_roundtrip_and_clear(tmp_path: Path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    assert ws.color() is None
+    assert ws.set_color(" green ") == "green"
+    assert ws.color() == "green"
+    assert json.loads(_json(ws).read_text()) == {"version": 1, "bundles": {}, "color": "green"}
+    assert ws.set_color(None) is None
+    assert ws.color() is None
+    assert "color" not in json.loads(_json(ws).read_text())
+
+
+@pytest.mark.parametrize("bad", ["#ff0000", "Green", "teal"])
+def test_set_color_rejects_unknown(tmp_path: Path, bad: str):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    with pytest.raises(ValueError, match="Invalid color"):
+        ws.set_color(bad)
+    assert not _json(ws).exists()
+
+
+def test_color_survives_description_writes(tmp_path: Path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    ws.set_color("purple")
+    ws.create_index("notes", description="Team notes")
+    assert ws.color() == "purple"
+    assert ws.description("notes") == "Team notes"

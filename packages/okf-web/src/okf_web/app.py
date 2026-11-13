@@ -13,6 +13,7 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
 
 from okf_core import (
+    Bundle,
     INDEX_FILENAME,
     RESERVED_STEMS,
     OKFDocument,
@@ -57,6 +58,47 @@ def _tree(storage: Storage, dir: str | None) -> dict:
                 }
             )
     return {"dir": key, "description": description(key), "directories": directories, "concepts": concepts}
+
+
+def _overview(storage: Storage, recent: int = 5) -> dict:
+    """At-a-glance stats for one bundle: concept/directory counts, types, latest concepts."""
+    bundle = Bundle.load(storage)
+    concepts = list(bundle)
+    types: dict[str, int] = {}
+    for c in concepts:
+        types[c.type or "?"] = types.get(c.type or "?", 0) + 1
+
+    def stamp(c) -> str:
+        ts = c.document.frontmatter.get("timestamp")
+        return ts.isoformat() if hasattr(ts, "isoformat") else str(ts or "")
+
+    latest = sorted(concepts, key=stamp, reverse=True)[:recent]
+    return {
+        "concepts": len(concepts),
+        "directories": len(_all_dirs(storage)),
+        "types": dict(sorted(types.items(), key=lambda kv: (-kv[1], kv[0]))),
+        "recent": [
+            {"id": c.id, "title": c.title or None, "type": c.type or None, "timestamp": stamp(c) or None}
+            for c in latest
+        ],
+    }
+
+
+def _concept_with_backlinks(storage: Storage, concept_id: str) -> dict:
+    """``get_concept`` plus ``linked_from``: the concepts whose bodies link here."""
+    result = operations.get_concept(storage, concept_id)
+    result["linked_from"] = sorted(set(Bundle.load(storage).backlinks(concept_id)))
+    return result
+
+
+def _all_dirs(storage: Storage, key: str = "") -> list[str]:
+    out: list[str] = []
+    for e in storage.list_dir(key):
+        if e.is_dir and not e.name.startswith("."):
+            child = posixpath.join(key, e.name)
+            out.append(child)
+            out.extend(_all_dirs(storage, child))
+    return out
 
 
 def create_app(
@@ -165,7 +207,7 @@ def create_app(
                 write=True,
                 status=201,
             ),
-            r("/concepts/{concept_id:path}", lambda rq, b: operations.get_concept(resolve(rq), cid(rq)), ["GET"]),
+            r("/concepts/{concept_id:path}", lambda rq, b: _concept_with_backlinks(resolve(rq), cid(rq)), ["GET"]),
             r(
                 "/concepts/{concept_id:path}",
                 lambda rq, b: operations.patch_concept(resolve(rq), cid(rq), b.get("frontmatter"), b.get("body")),
@@ -192,9 +234,18 @@ def create_app(
                 ["POST"],
                 write=True,
             ),
+            r("/dirs", lambda rq, b: {"dirs": sorted(_all_dirs(resolve(rq)))}, ["GET"]),
+            r(
+                "/dirs",
+                lambda rq, b: operations.create_directory(resolve(rq), b["dir"], b.get("description") or ""),
+                ["POST"],
+                write=True,
+                status=201,
+            ),
             r("/reindex", lambda rq, b: operations.reindex_bundle(resolve(rq)), ["POST"], write=True),
             r("/search", search, ["GET"]),
             r("/bundle", bundle_info, ["GET"]),
+            r("/overview", lambda rq, b: _overview(resolve(rq)), ["GET"]),
             r("/bundle/describe", describe_bundle, ["POST"], write=True),
         ]
 
@@ -203,11 +254,15 @@ def create_app(
         return ws.bundle_storage(request.path_params["index"])
 
     def list_workspaces(request, body):
-        return [{"name": w.name, "indexes": w.bundles_info()} for w in registry.list()]
+        return [{"name": w.name, "color": w.color(), "indexes": w.bundles_info()} for w in registry.list()]
 
     def create_workspace(request, body):
         registry.create(body["name"])
-        return {"name": body["name"], "indexes": []}
+        return {"name": body["name"], "color": None, "indexes": []}
+
+    def set_workspace_color(request, body):
+        ws = registry.get(request.path_params["workspace"])
+        return {"name": ws.name, "color": ws.set_color(body.get("color"))}
 
     def create_index(request, body):
         ws = registry.get(request.path_params["workspace"])
@@ -218,6 +273,11 @@ def create_app(
         Route("/api/info", handler(info)),
         Route("/api/workspaces", handler(list_workspaces), methods=["GET"]),
         Route("/api/workspaces", handler(create_workspace, write=True, status=201), methods=["POST"]),
+        Route(
+            "/api/workspaces/{workspace}/color",
+            handler(set_workspace_color, write=True),
+            methods=["POST"],
+        ),
         Route(
             "/api/workspaces/{workspace}/indexes",
             handler(create_index, write=True, status=201),
