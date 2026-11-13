@@ -1,0 +1,5 @@
+node_modules
+dist
+# raw image generations; keep only Okie's reference sheet (needed to redraw him consistently)
+src/assets/**/_sources/*
+!src/assets/doodles/_sources/okie-reference.png

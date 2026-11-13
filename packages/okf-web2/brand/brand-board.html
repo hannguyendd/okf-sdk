@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OK, Fine Memory — Brand board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Mali:wght@400;600;700&family=Patrick+Hand&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #2b3a67; --paper: #fffef9; --rule: #c9dcf5; --margin: #ff9fb6; --link: #d1345b; --note: #fff6b8;
+    --yellow: #ffd23f; --pink: #ff9fb6; --green: #9be564; --blue: #6aa8ff; --red: #ff7b6b; --orange: #ffb703; --purple: #b79cff;
+    --head: "Mali", "Comic Sans MS", cursive; --hand: "Patrick Hand", "Comic Sans MS", cursive;
+    --wob: 255px 18px 225px 18px / 18px 225px 18px 255px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; color: var(--ink); font: 18px/32px var(--hand);
+    background: var(--paper);
+    background-image:
+      linear-gradient(90deg, transparent 54px, var(--margin) 54px 56px, transparent 56px 59px, var(--margin) 59px 60px, transparent 60px),
+      repeating-linear-gradient(transparent 0 31px, var(--rule) 31px 32px);
+  }
+  main { max-width: 1120px; margin: 0 auto; padding: 40px 32px 80px 90px; }
+  h1, h2, h3 { font-family: var(--head); margin: 0; }
+  h2 { font-size: 26px; margin: 56px 0 16px; transform: rotate(-1deg); display: inline-block;
+       background: linear-gradient(transparent 62%, var(--yellow) 62% 88%, transparent 88%); padding: 0 6px; }
+  h3 { font-size: 18px; }
+  p { margin: 0; }
+  .card { position: relative; background: var(--paper); padding: 22px 26px; border: 2.5px solid var(--ink); border-radius: var(--wob); }
+  .card.note { background: var(--note); }
+  .grid { display: grid; gap: 22px; }
+  .g2 { grid-template-columns: repeat(2, 1fr); } .g3 { grid-template-columns: repeat(3, 1fr); } .g4 { grid-template-columns: repeat(4, 1fr); }
+  .muted { opacity: .7; } .small { font-size: 15px; line-height: 24px; }
+  code { font-family: ui-monospace, monospace; font-size: .85em; background: #e8f1ff; padding: 0 6px; border-radius: 6px; }
+  .rough { filter: url(#rough); }
+
+  /* hero */
+  .hero { display: flex; align-items: center; gap: 40px; padding: 36px 40px; }
+  .wordmark { font-family: var(--head); font-weight: 700; font-size: 56px; line-height: 1.1; transform: rotate(-2deg); display: inline-block; position: relative; }
+  .wordmark::after { content: ""; position: absolute; left: 4px; right: -8px; bottom: -12px; height: 14px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 16' preserveAspectRatio='none'%3E%3Cpath d='M2 9c30-7 60-6 95-2s70 5 100-4' fill='none' stroke='%23ff7b6b' stroke-width='5' stroke-linecap='round'/%3E%3Cpath d='M14 13c50-5 110-5 180-2' fill='none' stroke='%23ff7b6b' stroke-width='2.5' stroke-linecap='round' opacity='.7'/%3E%3C/svg%3E") center / 100% 100% no-repeat; }
+  .tagline { font-family: var(--head); font-size: 24px; margin-top: 26px; transform: rotate(-1deg); }
+
+  /* lockups */
+  .lockup { display: flex; align-items: center; gap: 12px; justify-content: center; min-height: 150px; }
+  .lockup.stack { flex-direction: column; gap: 4px; }
+  .lockup .wm { white-space: nowrap; font-family: var(--head); font-weight: 700; font-size: 26px; transform: rotate(-2deg); }
+  .lockup .tl { font-family: var(--hand); font-size: 16px; opacity: .75; }
+  .reverse { background: var(--ink); color: var(--paper); }
+  .mono svg * { stroke: currentColor !important; }
+  .mono svg .fill { fill: transparent !important; }
+
+  /* swatches */
+  .sw { display: flex; flex-direction: column; gap: 6px; }
+  .chip { height: 74px; border: 2.5px solid var(--ink); border-radius: var(--wob); }
+  .chip.crayon { background-image: repeating-linear-gradient(-40deg, transparent 0 3px, rgb(255 255 255 / .55) 3px 6px); }
+  .sw b { font-family: var(--head); font-size: 15px; }
+
+  /* buttons */
+  .btn { display: inline-block; font: 600 16px/32px var(--head); padding: 0 18px; border: 2.5px solid var(--ink); border-radius: var(--wob);
+    background-image: repeating-linear-gradient(-40deg, var(--c) 0 4px, transparent 4px 7px); transform: rotate(var(--t, -1.5deg)); margin-right: 12px; }
+  .tape { position: absolute; width: 96px; height: 24px; top: -12px; opacity: .85;
+    background: repeating-linear-gradient(45deg, var(--c, var(--yellow)) 0 8px, rgb(255 255 255 / .55) 8px 16px); }
+  .hl { background: linear-gradient(100deg, transparent 2%, var(--yellow) 4% 94%, transparent 97%); padding: 0 6px; }
+  .wavy { color: var(--link); text-decoration: underline wavy; text-underline-offset: 5px; }
+
+  table { border-collapse: collapse; width: 100%; }
+  td { padding: 2px 14px 2px 0; vertical-align: top; }
+  td:first-child { font-family: var(--head); font-size: 15px; opacity: .65; white-space: nowrap; }
+  .do li::marker { content: "✓  "; color: #3f9b3a; } .dont li::marker { content: "✗  "; color: var(--red); }
+  ul { padding-left: 24px; margin: 6px 0 0; }
+  @media (max-width: 860px) { .g3, .g4 { grid-template-columns: repeat(2, 1fr); } .hero { flex-direction: column; } main { padding-left: 70px; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="rough"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="4" result="n"/>
+    <feDisplacementMap in="SourceGraphic" in2="n" scale="3.5" xChannelSelector="R" yChannelSelector="G"/></filter>
+  <!-- Okie, the reluctant snail (placeholder sketch until the final mark is drawn) -->
+  <symbol id="okie" viewBox="0 0 130 100">
+    <clipPath id="shell-clip"><circle cx="52" cy="50" r="31"/></clipPath>
+    <!-- body -->
+    <path class="fill" d="M8 84c20 5 66 6 92 1 10-2 15-11 13-21-1-8-7-12-13-11-5 1-8 6-8 11" fill="#fffef9" stroke="#2b3a67" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M18 86c22 3 56 3 76-1" fill="none" stroke="#ff9fb6" stroke-width="3" stroke-linecap="round" stroke-dasharray="7 5"/>
+    <!-- eye stalks -->
+    <path d="M100 56c-2-8-6-15-9-22M108 58c1-9 3-17 6-24" fill="none" stroke="#2b3a67" stroke-width="3" stroke-linecap="round"/>
+    <!-- half-lidded eyes -->
+    <circle class="fill" cx="90" cy="29" r="6.5" fill="#fff" stroke="#2b3a67" stroke-width="2.6"/>
+    <circle class="fill" cx="115" cy="29" r="6.5" fill="#fff" stroke="#2b3a67" stroke-width="2.6"/>
+    <path class="fill" d="M83.5 29a6.5 6.5 0 0 1 13 0z M108.5 29a6.5 6.5 0 0 1 13 0z" fill="#ffd9e3" stroke="#2b3a67" stroke-width="2.2" stroke-linejoin="round"/>
+    <circle cx="90" cy="32" r="2" fill="#2b3a67"/><circle cx="115" cy="32" r="2" fill="#2b3a67"/>
+    <!-- flat mouth + sigh puff -->
+    <path d="M104 72h7" stroke="#2b3a67" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M118 68c3-3 8-2 8 2s-4 5-6 3" fill="none" stroke="#2b3a67" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+    <!-- shell: crayon scribble + notebook-spiral whorl -->
+    <circle class="fill" cx="52" cy="50" r="31" fill="#fffef9"/>
+    <g clip-path="url(#shell-clip)">
+      <path class="fill" d="M14 26l10 52M22 22l10 60M30 18l10 64M38 16l10 66M46 16l10 66M54 16l10 66M62 16l10 66M70 18l10 64M78 22l10 60M86 28l6 44" stroke="#ffd23f" stroke-width="6" stroke-linecap="round"/>
+    </g>
+    <circle cx="52" cy="50" r="31" fill="none" stroke="#2b3a67" stroke-width="3"/>
+    <path d="M52 50c0-3 4-4 6-1 3 4-1 9-6 9-7 0-11-7-9-13 3-9 14-12 21-7 9 6 9 20 1 27-10 8-26 6-32-5" fill="none" stroke="#2b3a67" stroke-width="3" stroke-linecap="round"/>
+    <!-- pencil-check trail -->
+    <path d="M-2 92l6 4 10-10" fill="none" stroke="#2b3a67" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" opacity=".55"/>
+  </symbol>
+</svg>
+
+<main>
+  <p class="small muted">Brand board · v0.1 · see <code>brand/BRAND.md</code></p>
+
+  <div class="card hero" style="margin-top:14px">
+    <span class="tape" style="left:40px; --c: var(--pink); transform: rotate(-5deg)"></span>
+    <span class="tape" style="right:50px; --c: var(--green); transform: rotate(4deg)"></span>
+    <svg class="rough" width="230" height="177"><use href="#okie"/></svg>
+    <div>
+      <span class="wordmark">OK, Fine Memory</span>
+      <p class="tagline">OK, fine, I’ll remember it for you.</p>
+      <p class="muted" style="margin-top:14px">A notebook that remembers things for you and your agents. Plain markdown files, a snail-paced attitude, a perfect memory.</p>
+    </div>
+  </div>
+
+  <h2>Mascot: Okie, the reluctant snail</h2>
+  <div class="grid g2">
+    <div class="card note">
+      <h3>Why a snail</h3>
+      <p>Slow and a little lazy on the outside, but nothing that goes into the shell is ever lost. The shell's whorl is drawn like a notebook's spiral binding.</p>
+      <ul>
+        <li>Half-lidded eyes on wobbly stalks: unimpressed, never angry</li>
+        <li>Yellow crayon shell (or the workspace's accent)</li>
+        <li>A sigh puff, a pencil, a check-mark trail</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Poses</h3>
+      <table>
+        <tr><td>Sigh</td><td>logo mark, favicon</td></tr>
+        <tr><td>Writing</td><td>saved / created</td></tr>
+        <tr><td>Reading</td><td>search, onboarding</td></tr>
+        <tr><td>Asleep</td><td>search off, idle</td></tr>
+        <tr><td>Shrug</td><td>empty, no results</td></tr>
+        <tr><td>Oops</td><td>error (shell tipped, crayons spilled)</td></tr>
+        <tr><td>Wave</td><td>welcome</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <h2>Lockups</h2>
+  <div class="grid g2">
+    <div class="card lockup"><svg class="rough" width="90" height="70"><use href="#okie"/></svg></div>
+    <div class="card lockup"><svg class="rough" width="54" height="42"><use href="#okie"/></svg><span class="wm">OK, Fine Memory</span></div>
+    <div class="card lockup stack"><svg class="rough" width="70" height="54"><use href="#okie"/></svg><span class="wm">OK, Fine Memory</span><span class="tl">OK, fine, I’ll remember it for you.</span></div>
+    <div class="card lockup reverse"><svg class="rough" width="54" height="42"><use href="#okie"/></svg><span class="wm">OK, Fine Memory</span></div>
+  </div>
+  <p class="small muted" style="margin-top:10px">Mark · Horizontal · Stacked · Reversed on Ink. Clear space = eye-stalk height. Min size: mark 20 px, horizontal 120 px.</p>
+
+  <h2>Colour</h2>
+  <div class="grid g3">
+    <div class="sw"><div class="chip" style="background:var(--ink)"></div><b>Ink #2b3a67</b><span class="small">text, outlines, icons</span></div>
+    <div class="sw"><div class="chip" style="background:var(--paper)"></div><b>Paper #fffef9</b><span class="small">pages, cards</span></div>
+    <div class="sw"><div class="chip" style="background:var(--note)"></div><b>Note #fff6b8</b><span class="small">sticky notes, bodies</span></div>
+    <div class="sw"><div class="chip" style="background:var(--rule)"></div><b>Rule #c9dcf5</b><span class="small">notebook lines, 32 px</span></div>
+    <div class="sw"><div class="chip" style="background:var(--margin)"></div><b>Margin #ff9fb6</b><span class="small">double margin line</span></div>
+    <div class="sw"><div class="chip" style="background:var(--link)"></div><b>Link #d1345b</b><span class="small">wavy-underlined links</span></div>
+  </div>
+  <h3 style="margin:26px 0 10px">Crayons: workspace accents, fills, highlights</h3>
+  <div class="grid" style="grid-template-columns: repeat(7, 1fr)">
+    <div class="sw"><div class="chip crayon" style="background-color:var(--yellow)"></div><b>yellow</b><span class="small">#ffd23f</span></div>
+    <div class="sw"><div class="chip crayon" style="background-color:var(--pink)"></div><b>pink</b><span class="small">#ff9fb6</span></div>
+    <div class="sw"><div class="chip crayon" style="background-color:var(--green)"></div><b>green</b><span class="small">#9be564</span></div>
+    <div class="sw"><div class="chip crayon" style="background-color:var(--blue)"></div><b>blue</b><span class="small">#6aa8ff</span></div>
+    <div class="sw"><div class="chip crayon" style="background-color:var(--red)"></div><b>red</b><span class="small">#ff7b6b</span></div>
+    <div class="sw"><div class="chip crayon" style="background-color:var(--orange)"></div><b>orange</b><span class="small">#ffb703</span></div>
+    <div class="sw"><div class="chip crayon" style="background-color:var(--purple)"></div><b>purple</b><span class="small">#b79cff</span></div>
+  </div>
+  <p class="small muted" style="margin-top:10px">Text is always Ink (≈ 11:1 on Paper). Crayons are scribbled fills, never text colours.</p>
+
+  <h2>Type</h2>
+  <div class="grid g2">
+    <div class="card">
+      <p class="small muted">Mali 700 · headings, buttons, labels</p>
+      <p style="font:700 36px/1.2 var(--head); transform: rotate(-1deg)">Card payment flow</p>
+      <p style="font:700 24px/1.3 var(--head); margin-top:8px">Links to</p>
+      <p style="font:600 16px/1.4 var(--head); margin-top:8px">New concept · Reindex · Edit</p>
+    </div>
+    <div class="card">
+      <p class="small muted">Patrick Hand 400 · body 18/32 on the rules</p>
+      <p>Kiosk gửi lệnh sale tới terminal. Terminal trả kết quả. The quick snail jumps over the lazy notebook.</p>
+      <p class="small muted" style="margin-top:8px">Mono · ids and paths</p>
+      <p><code>flows/card-payment</code></p>
+    </div>
+  </div>
+
+  <h2>UI motifs</h2>
+  <div class="grid g2">
+    <div class="card">
+      <p style="margin-bottom:12px">
+        <span class="btn" style="--c: var(--yellow)">Edit</span>
+        <span class="btn" style="--c: var(--pink); --t: 1.3deg">Move</span>
+        <span class="btn" style="--c: var(--red); --t: -.5deg">Delete</span>
+        <span class="btn" style="--c: var(--green); --t: 1deg">Create</span>
+      </p>
+      <p>Current item gets a <span class="hl">marker highlight</span>; links get a <span class="wavy">wavy pen line</span>.</p>
+    </div>
+    <div class="card note" style="transform: rotate(-.6deg)">
+      <span class="tape" style="left:30px; transform: rotate(-6deg)"></span>
+      <h3>Sticky note</h3>
+      <p>Concept bodies and messages live on notes, taped to the page. Lined paper, a spiral notebook explorer, and margin doodles complete the desk.</p>
+    </div>
+  </div>
+
+  <h2>Voice</h2>
+  <div class="grid g2">
+    <div class="card">
+      <table>
+        <tr><td>Saved</td><td>Fine. Remembered.</td></tr>
+        <tr><td>Created</td><td>Fine, I’ll keep this one too.</td></tr>
+        <tr><td>Deleted</td><td>Erased. I’ll pretend I never knew.</td></tr>
+        <tr><td>Moved</td><td>Moved it. Links are fixed, you’re welcome.</td></tr>
+        <tr><td>Reindexed</td><td>Tidied up 12 listings.</td></tr>
+        <tr><td>Loading</td><td>Coming, coming…</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <table>
+        <tr><td>Empty</td><td>Nothing here yet. Tell me something and I’ll remember it.</td></tr>
+        <tr><td>No results</td><td>I looked. Nothing. Try other words?</td></tr>
+        <tr><td>Search off</td><td>Search is napping.</td></tr>
+        <tr><td>Error</td><td>Oops, I dropped my crayons: <i>{message}</i></td></tr>
+        <tr><td>404</td><td>This page fell out of the notebook.</td></tr>
+        <tr><td>About</td><td>I’m slow, but I don’t forget.</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <h2>Do / Don’t</h2>
+  <div class="grid g2">
+    <div class="card"><ul class="do">
+      <li>Sigh a little, then help</li>
+      <li>Say what went wrong in plain words</li>
+      <li>Keep outlines wobbly and fills scribbled</li>
+      <li>Write the name as <b>OK, Fine Memory</b></li>
+    </ul></div>
+    <div class="card"><ul class="dont">
+      <li>Mock the user or hide errors behind jokes</li>
+      <li>Gradients, shadows, 3D, polished clip-art</li>
+      <li>Crayon-coloured text</li>
+      <li>Angry, sad or winking Okie; a snail without a shell</li>
+    </ul></div>
+  </div>
+</main>
+</body>
+</html>

@@ -1,0 +1,262 @@
+{
+  "brand/logo/app-icon.png": {
+    "size": "1024x1024",
+    "description": "Okie on a rounded notebook-paper tile"
+  },
+  "brand/logo/lockup-horizontal.png": {
+    "size": "2400x400",
+    "description": "Okie mark beside the wordmark"
+  },
+  "brand/logo/lockup-stacked.png": {
+    "size": "1600x1100",
+    "description": "Okie mark above wordmark and tagline"
+  },
+  "brand/logo/mark-mono-ink.png": {
+    "size": "1024x1024",
+    "description": "Okie line art in navy ink"
+  },
+  "brand/logo/mark-mono-paper.png": {
+    "size": "1024x1024",
+    "description": "Okie line art in paper white for dark backgrounds"
+  },
+  "brand/logo/mark.png": {
+    "size": "1024x1024",
+    "description": "Okie sigh pose — primary brand mark"
+  },
+  "brand/logo/mark.svg": {
+    "size": "128x100",
+    "description": "Okie sigh pose — primary brand mark"
+  },
+  "brand/logo/wordmark.png": {
+    "size": "2048x360",
+    "description": "Hand-lettered OK, Fine Memory with coral double underline"
+  },
+  "brand/social-card.png": {
+    "size": "1200x630",
+    "description": "Brand lockup and Okie writing on notebook paper"
+  },
+  "public/apple-touch-icon.png": {
+    "size": "180x180",
+    "description": "Apple touch icon"
+  },
+  "public/favicon-32.png": {
+    "size": "32x32",
+    "description": "Favicon 32"
+  },
+  "public/favicon.svg": {
+    "size": "32x32",
+    "description": "Favicon"
+  },
+  "src/assets/doodles/okie/okie-asleep.png": {
+    "size": "960x720",
+    "description": "Okie asleep beside the shell with sleep squiggles"
+  },
+  "src/assets/doodles/okie/okie-loading.png": {
+    "size": "960x720",
+    "description": "Okie crawling with a check-mark trail"
+  },
+  "src/assets/doodles/okie/okie-lost-page.png": {
+    "size": "960x720",
+    "description": "Okie watching a torn notebook page blow away"
+  },
+  "src/assets/doodles/okie/okie-oops.png": {
+    "size": "960x720",
+    "description": "Okie tipped sideways with spilled crayons"
+  },
+  "src/assets/doodles/okie/okie-reading.png": {
+    "size": "960x720",
+    "description": "Okie wearing round glasses and reading"
+  },
+  "src/assets/doodles/okie/okie-shrug.png": {
+    "size": "960x720",
+    "description": "Okie with drooping eyestalks and an empty notebook"
+  },
+  "src/assets/doodles/okie/okie-sigh.png": {
+    "size": "960x720",
+    "description": "Okie with half-closed eyes and a sigh puff"
+  },
+  "src/assets/doodles/okie/okie-wave.png": {
+    "size": "960x720",
+    "description": "Okie waving one eyestalk"
+  },
+  "src/assets/doodles/okie/okie-writing.png": {
+    "size": "960x720",
+    "description": "Okie writing in a tiny notebook with a pencil"
+  },
+  "src/assets/doodles/icons/check.png": {
+    "size": "128x128",
+    "description": "Check"
+  },
+  "src/assets/doodles/icons/chevron.png": {
+    "size": "128x128",
+    "description": "Chevron"
+  },
+  "src/assets/doodles/icons/close.png": {
+    "size": "128x128",
+    "description": "Close"
+  },
+  "src/assets/doodles/icons/collapse.png": {
+    "size": "128x128",
+    "description": "Collapse"
+  },
+  "src/assets/doodles/icons/eraser.png": {
+    "size": "128x128",
+    "description": "Eraser"
+  },
+  "src/assets/doodles/icons/folder-closed.png": {
+    "size": "128x128",
+    "description": "Folder closed"
+  },
+  "src/assets/doodles/icons/folder-open.png": {
+    "size": "128x128",
+    "description": "Folder open"
+  },
+  "src/assets/doodles/icons/link.png": {
+    "size": "128x128",
+    "description": "Link"
+  },
+  "src/assets/doodles/icons/move.png": {
+    "size": "128x128",
+    "description": "Move"
+  },
+  "src/assets/doodles/icons/notebook.png": {
+    "size": "128x128",
+    "description": "Notebook"
+  },
+  "src/assets/doodles/icons/page.png": {
+    "size": "128x128",
+    "description": "Page"
+  },
+  "src/assets/doodles/icons/palette.png": {
+    "size": "128x128",
+    "description": "Palette"
+  },
+  "src/assets/doodles/icons/pencil.png": {
+    "size": "128x128",
+    "description": "Pencil"
+  },
+  "src/assets/doodles/icons/plus.png": {
+    "size": "128x128",
+    "description": "Plus"
+  },
+  "src/assets/doodles/icons/refresh.png": {
+    "size": "128x128",
+    "description": "Refresh"
+  },
+  "src/assets/doodles/icons/search.png": {
+    "size": "128x128",
+    "description": "Search"
+  },
+  "src/assets/doodles/icons/tag.png": {
+    "size": "128x128",
+    "description": "Tag"
+  },
+  "src/assets/doodles/icons/warning.png": {
+    "size": "128x128",
+    "description": "Warning"
+  },
+  "src/assets/doodles/bullets/dot.png": {
+    "size": "64x64",
+    "description": "Dot"
+  },
+  "src/assets/doodles/bullets/flower.png": {
+    "size": "64x64",
+    "description": "Flower"
+  },
+  "src/assets/doodles/bullets/heart.png": {
+    "size": "64x64",
+    "description": "Heart"
+  },
+  "src/assets/doodles/bullets/snail-shell.png": {
+    "size": "64x64",
+    "description": "Snail shell"
+  },
+  "src/assets/doodles/bullets/star.png": {
+    "size": "64x64",
+    "description": "Star"
+  },
+  "src/assets/doodles/notebook/name-label.png": {
+    "size": "880x280",
+    "description": "Blank scalloped name label with a pink dashed border"
+  },
+  "src/assets/doodles/notebook/notebook-cover.png": {
+    "size": "480x360",
+    "description": "Closed blue spiral notebook with a blank label"
+  },
+  "src/assets/doodles/notebook/notebook-open.png": {
+    "size": "640x360",
+    "description": "Open blue spiral notebook with ruled pages"
+  },
+  "src/assets/doodles/notebook/spiral-ring.svg": {
+    "size": "34x30",
+    "description": "Seamless vertical repeat of a wire binding ring over a punched hole"
+  },
+  "src/assets/doodles/notebook/sticky-note.png": {
+    "size": "640x640",
+    "description": "Blank pale yellow sticky note with a curled corner"
+  },
+  "src/assets/doodles/notebook/washi-blue.png": {
+    "size": "480x112",
+    "description": "Blue translucent striped washi tape with torn ends"
+  },
+  "src/assets/doodles/notebook/washi-green.png": {
+    "size": "480x112",
+    "description": "Green translucent striped washi tape with torn ends"
+  },
+  "src/assets/doodles/notebook/washi-pink.png": {
+    "size": "480x112",
+    "description": "Pink translucent striped washi tape with torn ends"
+  },
+  "src/assets/doodles/notebook/washi-yellow.png": {
+    "size": "480x112",
+    "description": "Yellow translucent striped washi tape with torn ends"
+  },
+  "src/assets/doodles/decor/balloon.png": {
+    "size": "384x640",
+    "description": "Balloon"
+  },
+  "src/assets/doodles/decor/cloud.png": {
+    "size": "640x384",
+    "description": "Cloud"
+  },
+  "src/assets/doodles/decor/flower.png": {
+    "size": "384x640",
+    "description": "Flower"
+  },
+  "src/assets/doodles/decor/house.png": {
+    "size": "512x512",
+    "description": "House"
+  },
+  "src/assets/doodles/decor/kid-reading.png": {
+    "size": "512x512",
+    "description": "Kid reading"
+  },
+  "src/assets/doodles/decor/kid-running.png": {
+    "size": "512x512",
+    "description": "Kid running"
+  },
+  "src/assets/doodles/decor/leaf.png": {
+    "size": "384x384",
+    "description": "Leaf"
+  },
+  "src/assets/doodles/decor/paper-plane.png": {
+    "size": "512x512",
+    "description": "Paper plane"
+  },
+  "src/assets/doodles/decor/rainbow.png": {
+    "size": "768x448",
+    "description": "Rainbow"
+  },
+  "src/assets/doodles/decor/stars-cluster.png": {
+    "size": "512x512",
+    "description": "Stars cluster"
+  },
+  "src/assets/doodles/decor/sun.png": {
+    "size": "512x512",
+    "description": "Sun"
+  },
+  "src/assets/doodles/decor/tree.png": {
+    "size": "512x640",
+    "description": "Tree"
+  }
+}

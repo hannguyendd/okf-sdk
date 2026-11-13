@@ -1,0 +1,267 @@
+@import "tailwindcss";
+
+/* Kid's-notebook theme. Outlines and crayon fills are drawn by rough.js
+   (doodle/Sketch.tsx) and marker annotations by rough-notation (doodle/Mark.tsx);
+   this file only holds the paper, fonts, and a few CSS-only pieces. */
+
+/* Dark mode is a chalkboard (BRAND.md §4): `.dark` on <html>, set before first
+   paint by the script in index.html and toggled by ThemeToggle. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Theme tokens. Light = school notebook, dark = chalkboard. Okie and the
+   generated art keep their ink outlines in both, like stickers. */
+:root {
+  --ink: #2b3a67;          /* text, outlines (rough.js draws in currentColor) */
+  --paper: #fffef9;        /* pages, cards */
+  --rule: #c9dcf5;         /* notebook lines */
+  --margin: #ff9fb6;       /* margin line */
+  --note: #fff6b8;         /* sticky notes, concept bodies */
+  --label: #ffffff;        /* notebook name labels */
+  --chip: #e8f1ff;         /* code / id chips */
+  --link: #d1345b;
+  --link-hover: #a3123a;
+  --crumb: #2563eb;
+  --hover: rgb(254 249 195 / 0.7);
+  --pill-a: #ffd9e3;
+  --pill-b: #dcf7c9;
+  --shadow: rgb(43 58 103 / 0.25);
+  --crayon-text: var(--ink); /* text on crayon fills */
+  --spiral: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='34' height='30'%3E%3Ccircle cx='24' cy='15' r='3.4' fill='%23e7e1cf' stroke='%232b3a67' stroke-width='1.6'/%3E%3Cpath d='M24 15C17 4 4 6 3 14' fill='none' stroke='%237c8598' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E");
+  --branch: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='26'%3E%3Cpath d='M4 0 Q1 7 4 13 T4 26' fill='none' stroke='%232b3a67' stroke-width='2' stroke-linecap='round' stroke-dasharray='5 4'/%3E%3C/svg%3E");
+}
+.dark {
+  --ink: #f1ede0;                    /* chalk */
+  --paper: #2f4a3d;                  /* board */
+  --rule: rgb(241 237 224 / 0.09);   /* faint chalk lines */
+  --margin: rgb(255 159 182 / 0.4);
+  --note: #3d5946;
+  --label: #3a5848;
+  --chip: rgb(255 255 255 / 0.08);
+  --link: #ffd98a;
+  --link-hover: #fff1c7;
+  --crumb: #9ad7ff;
+  --hover: rgb(255 255 255 / 0.08);
+  --pill-a: rgb(255 159 182 / 0.25);
+  --pill-b: rgb(155 229 100 / 0.22);
+  --shadow: rgb(0 0 0 / 0.35);
+  --spiral: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='34' height='30'%3E%3Ccircle cx='24' cy='15' r='3.4' fill='%23243a30' stroke='%23f1ede0' stroke-width='1.6'/%3E%3Cpath d='M24 15C17 4 4 6 3 14' fill='none' stroke='%23b9c2bd' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E");
+  --branch: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='26'%3E%3Cpath d='M4 0 Q1 7 4 13 T4 26' fill='none' stroke='%23f1ede0' stroke-width='2' stroke-linecap='round' stroke-dasharray='5 4' opacity='.6'/%3E%3C/svg%3E");
+}
+
+@theme inline {
+  --font-head: "Mali", "Comic Sans MS", "Chalkboard SE", cursive;
+  --font-hand: "Patrick Hand", "Comic Sans MS", "Chalkboard SE", cursive;
+  --color-ink: var(--ink);
+  --color-paper: var(--paper);
+  --color-rule: var(--rule);
+  --color-margin: var(--margin);
+  --color-note: var(--note);
+  --color-label: var(--label);
+  --color-chip: var(--chip);
+  --color-link: var(--link);
+  --color-crumb: var(--crumb);
+}
+
+@layer base {
+  html { color-scheme: light; }
+  html.dark { color-scheme: dark; }
+  body {
+    @apply bg-paper font-hand text-ink;
+    font-size: 18px;
+    line-height: 32px;
+    /* school notebook: pink double margin line + blue rules */
+    background-image:
+      linear-gradient(90deg, transparent 54px, var(--color-margin) 54px 56px, transparent 56px 59px, var(--color-margin) 59px 60px, transparent 60px),
+      repeating-linear-gradient(transparent 0 31px, var(--color-rule) 31px 32px);
+    background-attachment: local;
+  }
+  h2 { @apply mt-5 mb-1 -rotate-[0.6deg] font-head text-2xl font-bold; }
+  a { color: var(--link); }
+  a:hover { color: var(--link-hover); }
+  /* wavy pen underline on links */
+  a:not(.no-wavy, .tree-link) {
+    text-decoration: underline wavy;
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 5px;
+  }
+  code { @apply font-mono text-[0.85em]; }
+  :focus-visible { @apply outline-2 outline-offset-2 outline-dashed outline-[#3a86ff]; }
+}
+
+@layer components {
+  .doodle-btn {
+    @apply cursor-pointer font-head font-semibold text-ink transition-transform select-none;
+  }
+  .doodle-btn:hover:not(:disabled) { animation: wiggle 0.4s ease-in-out; }
+  .doodle-btn:active:not(:disabled) { scale: 0.94; }
+  .doodle-btn:disabled { @apply cursor-wait opacity-50; }
+
+  .field { @apply flex flex-col gap-0.5 font-head text-sm text-ink/60; }
+  .field-line {
+    @apply bg-transparent px-1 font-hand text-lg text-ink outline-none focus:bg-[var(--hover)];
+    background-image: linear-gradient(var(--color-ink), var(--color-ink));
+    background-size: 100% 2px;
+    background-position: 0 100%;
+    background-repeat: no-repeat;
+  }
+  .field-box {
+    @apply rounded-[18px_225px_18px_255px/255px_18px_225px_18px] border-[2.5px] border-ink bg-paper px-3 font-hand text-lg text-ink outline-none focus:shadow-[4px_5px_0_#ffd23f];
+    line-height: 32px;
+    background-image: repeating-linear-gradient(transparent 0 31px, var(--color-rule) 31px 32px);
+    background-position: 0 -6px; /* writing sits on the rules, as in .notebook */
+  }
+
+  .pill {
+    @apply inline-block -rotate-2 rounded-[255px_15px_225px_15px/15px_225px_15px_255px] border-2 border-ink bg-[var(--pill-a)] px-2.5 font-head text-xs leading-5 whitespace-nowrap text-ink;
+  }
+  .pill:nth-of-type(even) { @apply rotate-2 bg-[var(--pill-b)]; }
+
+  .doodle-list { @apply list-none pl-7; }
+  .doodle-list > li { @apply relative; }
+  .doodle-list > li::before { @apply absolute -left-6 text-[#ffb703]; content: "★"; }
+  .doodle-list > li:nth-child(3n + 2)::before { @apply text-[#ff9fb6]; content: "♥"; }
+  .doodle-list > li:nth-child(3n)::before { @apply text-[#5cc23b]; content: "✿"; }
+
+  .markdown h1 { @apply my-2 font-head text-2xl font-bold; }
+  .markdown h2 { @apply my-2 rotate-0 text-xl; }
+  .markdown p { @apply my-1; }
+  .markdown ul { @apply list-disc pl-6; }
+  .markdown ol { @apply list-decimal pl-6; }
+  .markdown pre { @apply overflow-auto rounded-lg bg-paper/70 p-2.5 text-sm leading-6; }
+  .markdown table { @apply my-2 border-collapse; }
+  .markdown th, .markdown td { @apply border-2 border-dashed border-ink/25 px-3 py-0.5 text-left; }
+  .markdown th { @apply font-head font-bold; }
+  .markdown blockquote { @apply my-2 border-l-4 border-dashed border-ink/30 pl-3 text-ink/75 italic; }
+  .markdown del { @apply text-ink/50; }
+
+  /* explorer notebook: lined page, margin line, spiral binding */
+  /* Content snaps to the 32 px rules: pt-2 + a 64 px name label (.notebook-label),
+     then every row is exactly one rule (leading-8, no gaps). */
+  .notebook {
+    @apply px-3 pt-2 pb-4 pl-8 leading-8;
+    background-image:
+      linear-gradient(90deg, transparent 24px, var(--color-margin) 24px 26px, transparent 26px),
+      repeating-linear-gradient(transparent 0 31px, var(--color-rule) 31px 32px);
+    /* Text baselines land ~23 px into each 32 px row; lifting the rules 6 px
+       puts every line of writing right on a rule, like handwriting. */
+    background-position: 0 0, 0 -6px;
+  }
+  .spiral {
+    @apply pointer-events-none absolute top-3 bottom-3 -left-5 w-[34px];
+    background: var(--spiral) 0 0 / 34px 30px repeat-y;
+  }
+  .notebook-label { @apply mx-1 mb-2 flex h-12 flex-col items-center justify-center bg-label px-1 text-center leading-5; }
+  .tree-link { @apply relative isolate flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg pr-2 leading-8 text-ink no-underline hover:bg-[var(--hover)]; }
+  .tree-link[aria-current="page"] { @apply font-bold; }
+  .tree-branch {
+    @apply ml-3 list-none pl-2.5;
+    background: var(--branch) 0 0 / 8px 26px repeat-y;
+  }
+
+  .sticky-note { @apply -rotate-1 cursor-pointer bg-note px-5 py-1 font-head shadow-[3px_4px_0_var(--shadow)]; }
+
+  .tape { @apply pointer-events-none absolute z-10 h-6 w-24 opacity-80; }
+  /* washi tape in the workspace accent colour (--accent, set by AccentProvider) */
+  .tape-l { @apply -top-3 left-6 -rotate-6; background: repeating-linear-gradient(45deg, var(--accent, #ffd23f) 0 8px, rgb(255 255 255 / 0.55) 8px 16px); }
+  .tape-r { @apply -top-3 right-8 rotate-[5deg]; background: repeating-linear-gradient(-45deg, var(--accent, #ffd23f) 0 6px, rgb(255 255 255 / 0.55) 6px 10px); }
+
+  /* loading: a notebook flipping open */
+  .book { @apply relative h-16 w-26; perspective: 500px; }
+  .book > div { @apply absolute top-0 left-13 h-16 w-12 origin-left rounded-[2px_10px_8px_2px] border-[2.5px] border-ink; }
+  .book .back, .book .page { background: var(--color-paper) repeating-linear-gradient(transparent 0 9px, var(--color-rule) 9px 10.5px); }
+  .book .page, .book .cover { animation: flip 2.4s infinite ease-in-out; }
+  .book .p1 { animation-delay: 0.35s; }
+  .book .p2 { animation-delay: 0.6s; }
+  .book .cover { @apply grid place-items-center bg-[#6aa8ff]; }
+  .book .cover::after { @apply h-4 w-7 rounded-[50%] border-2 border-dashed border-[#ff9fb6] bg-label; content: ""; }
+  .book .spine { @apply left-12 -top-1 h-[72px] w-1.5 rounded border-0 bg-ink; }
+}
+
+@keyframes wiggle {
+  25% { rotate: 4deg; scale: 1.06; }
+  75% { rotate: -4deg; scale: 1.06; }
+}
+@keyframes flip {
+  0%, 12% { transform: rotateY(0); }
+  55%, 100% { transform: rotateY(-178deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .book .page, .book .cover { animation: none; transform: rotateY(-178deg); }
+  .doodle-btn:hover:not(:disabled) { animation: none; }
+}
+
+/* skeleton scribbles breathe while loading */
+.skeleton { animation: breathe 1.4s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: 0.45; } }
+
+/* route changes: the main sheet turns like a page; header and explorer stay */
+.page-sheet { view-transition-name: page-sheet; }
+::view-transition-old(page-sheet) { animation: 180ms ease-in both sheet-out; }
+::view-transition-new(page-sheet) { animation: 260ms ease-out both sheet-in; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 200ms; }
+@keyframes sheet-out { to { opacity: 0; transform: translateX(-18px) rotate(-1.2deg); } }
+@keyframes sheet-in { from { opacity: 0; transform: translateX(22px) rotate(1.4deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}
+
+/* toasts (sonner, unstyled): a sticky note slapped on the corner */
+.toast-note {
+  @apply flex w-[min(92vw,340px)] -rotate-2 items-center gap-2 bg-note px-5 py-3 font-head text-base text-ink shadow-[3px_4px_0_var(--shadow)];
+  border-radius: 2px 2px 18px 2px;
+}
+
+/* explorer drag & drop: the folder you're over gets a dashed accent outline */
+.drop-target { outline: 2.5px dashed var(--accent, #ffd23f); outline-offset: 1px; background: var(--hover); }
+
+/* ---------- intro: Okie crawls in, the name writes itself, the page lifts ---------- */
+.intro {
+  @apply fixed inset-0 z-[70] flex cursor-pointer flex-col items-center justify-center bg-paper text-ink;
+  background-image:
+    linear-gradient(90deg, transparent 54px, var(--color-margin) 54px 56px, transparent 56px 59px, var(--color-margin) 59px 60px, transparent 60px),
+    repeating-linear-gradient(transparent 0 31px, var(--color-rule) 31px 32px);
+  transform-origin: 50% 0;
+}
+.intro-leave { animation: intro-lift 0.6s cubic-bezier(0.6, 0, 0.9, 0.4) forwards; }
+.intro-stage { @apply relative h-[260px] w-[min(92vw,620px)]; }
+.intro-okie { @apply absolute bottom-0 left-1/2 -ml-[150px]; animation: okie-crawl 1.3s cubic-bezier(0.3, 0.7, 0.4, 1) both; }
+.intro-okie > * { animation: okie-squash 0.33s ease-in-out 4 both; transform-origin: 50% 100%; }
+.intro-trail { @apply absolute bottom-1 left-0 h-10 w-full overflow-visible; }
+.intro-trail path { fill: none; stroke: var(--color-ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; opacity: 0.55;
+  stroke-dasharray: 700; stroke-dashoffset: 700; animation: draw 1.3s ease-out 0.1s forwards; }
+.intro-trail .intro-check { stroke-dasharray: 60; stroke-dashoffset: 60; animation: draw 0.3s ease-out 1.35s forwards; }
+.intro-sigh { @apply absolute top-6 right-[12%] font-hand text-xl text-ink/60; opacity: 0; animation: sigh 0.8s ease-out 2.3s forwards; }
+.intro-name {
+  @apply relative mt-6 -rotate-2 font-head text-5xl font-bold md:text-6xl;
+  clip-path: inset(-20% 100% -40% 0); animation: write-on 0.7s ease-out 0.95s forwards;
+}
+.intro-name::after {
+  content: ""; @apply absolute -right-2 -bottom-2 left-1 h-2 rounded-full bg-[#ff7b6b];
+  transform: scaleX(0); transform-origin: left; animation: underline 0.35s ease-out 1.6s forwards;
+}
+.intro-tagline {
+  @apply mt-5 font-head text-xl text-ink/80 md:text-2xl;
+  clip-path: inset(0 100% 0 0); animation: write-on 0.8s steps(34) 1.65s forwards;
+}
+.intro-skip { @apply absolute bottom-6 font-hand text-sm text-ink/40; opacity: 0; animation: sigh 0.4s ease-out 0.8s forwards; }
+
+@keyframes okie-crawl { from { transform: translateX(-62vw); } to { transform: translateX(0); } }
+@keyframes okie-squash { 50% { transform: scale(1.06, 0.94); } }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes write-on { to { clip-path: inset(-20% 0 -40% 0); } }
+@keyframes underline { to { transform: scaleX(1); } }
+@keyframes sigh { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes intro-lift { to { transform: translateY(-105%) rotate(-3deg); opacity: 0.6; } }
+
+/* ---------- chalkboard tweaks ---------- */
+/* Crayon scribbles behind chalk text are toned down so the text stays readable;
+   rough.js outlines are drawn in currentColor and keep full strength. */
+.dark .doodle-btn svg path:not([stroke="currentColor"]),
+.dark .crayon-fill svg path:not([stroke="currentColor"]) { opacity: 0.5; }
+.dark .tape { opacity: 0.55; }
+.dark .intro-trail path { stroke: var(--ink); }
+
+/* ---------- landing page ---------- */
+@keyframes okie-bob { 0%, 100% { translate: 0 0; rotate: 0deg; } 50% { translate: 0 -8px; rotate: -1deg; } }
+@media (prefers-reduced-motion: reduce) { [class*="okie-bob"] { animation: none !important; } }
