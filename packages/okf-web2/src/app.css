@@ -22,8 +22,9 @@
   --link-hover: #a3123a;
   --crumb: #2563eb;
   --hover: rgb(254 249 195 / 0.7);
-  --pill-a: #ffd9e3;
-  --pill-b: #dcf7c9;
+  --pill-a: #ffc8d6;
+  --pill-b: #cdf2b4;
+  --pill-c: #ffe783;
   --shadow: rgb(43 58 103 / 0.25);
   --crayon-text: var(--ink); /* text on crayon fills */
   --spiral: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='34' height='30'%3E%3Ccircle cx='24' cy='15' r='3.4' fill='%23e7e1cf' stroke='%232b3a67' stroke-width='1.6'/%3E%3Cpath d='M24 15C17 4 4 6 3 14' fill='none' stroke='%237c8598' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E");
@@ -43,6 +44,7 @@
   --hover: rgb(255 255 255 / 0.08);
   --pill-a: rgb(255 159 182 / 0.25);
   --pill-b: rgb(155 229 100 / 0.22);
+  --pill-c: rgb(255 210 63 / 0.22);
   --shadow: rgb(0 0 0 / 0.35);
   --spiral: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='34' height='30'%3E%3Ccircle cx='24' cy='15' r='3.4' fill='%23243a30' stroke='%23f1ede0' stroke-width='1.6'/%3E%3Cpath d='M24 15C17 4 4 6 3 14' fill='none' stroke='%23b9c2bd' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E");
   --branch: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='26'%3E%3Cpath d='M4 0 Q1 7 4 13 T4 26' fill='none' stroke='%23f1ede0' stroke-width='2' stroke-linecap='round' stroke-dasharray='5 4' opacity='.6'/%3E%3C/svg%3E");
@@ -111,10 +113,18 @@
     background-position: 0 -6px; /* writing sits on the rules, as in .notebook */
   }
 
+  /* a word swiped with a highlighter: the stroke sits low, starts and ends a bit ragged */
   .pill {
-    @apply inline-block -rotate-2 rounded-[255px_15px_225px_15px/15px_225px_15px_255px] border-2 border-ink bg-[var(--pill-a)] px-2.5 font-head text-xs leading-5 whitespace-nowrap text-ink;
+    @apply mr-1 inline-block -rotate-1 px-1.5 font-hand text-base leading-6 whitespace-nowrap text-ink;
+    --swipe: var(--pill-a);
+    background:
+      linear-gradient(97deg, transparent 0.15em, var(--swipe) 0.35em, var(--swipe) calc(100% - 0.4em), transparent calc(100% - 0.1em))
+      0 80% / 100% 66% no-repeat;
+    border-radius: 0.2em 0.7em 0.3em 0.8em;
   }
-  .pill:nth-of-type(even) { @apply rotate-2 bg-[var(--pill-b)]; }
+  .pill:nth-of-type(3n + 2) { @apply rotate-1; --swipe: var(--pill-b); }
+  .pill:nth-of-type(3n) { --swipe: var(--pill-c); }
+  .pill-count { @apply ml-1 font-head text-[0.7em] text-ink/55; }
 
   .doodle-list { @apply list-none pl-7; }
   .doodle-list > li { @apply relative; }
