@@ -60,6 +60,21 @@ with a workspace/index picker; `--read-only`, binds 127.0.0.1, no auth). The UI
 shows and edits each index's description. Frontend tests: `bun test`. See
 `docs/superpowers/specs/2026-10-25-okf-web-ui-design.md`.
 
+**`packages/okf-web2`**: "OK, Fine Memory", a second frontend for the same
+`okf-web` API: Vite + React 19 + wouter (hash routes) + TanStack Query + Radix
+Dialog + react-hook-form + sonner, drawn with rough.js / rough-notation on a
+lined-notebook theme. It is bun-only (no `pyproject.toml`), so the root uv
+workspace excludes it. Dev: `bun run dev` (proxies `/api` to `okf-web` on
+8765); prod: `bun run build` then `uv run okf-web --static packages/okf-web2/dist`.
+Tests: `bun run test` (Vitest + MSW). Brand and voice: `packages/okf-web2/brand/BRAND.md`.
+A second Vite entry, `landing.html` (`src/landing/`), is the marketing page;
+`okf-web --static` serves it at `/landing.html`. The root `README.md` is the
+fun, Okie-voiced intro; technical docs live in `docs/TECHNICAL.md`.
+Workspaces carry an optional crayon `color` in `.okf/workspace.json`
+(`Workspace.color()`/`set_color()`, `okf_core.WORKSPACE_COLORS`); empty
+directories are created with `operations.create_directory` (writes the
+directory's `_index.md`).
+
 **Storage.** All file access in both packages goes through the
 `okf_core.Storage` interface (`read_text`/`write_text`/`delete`/`move`/
 `list_dir`/`iter_files`/`mkdir`/`lock`, bundle-relative POSIX keys).
