@@ -14,21 +14,9 @@ import { AccentProvider, toneOf, useAccent } from "../lib/accent";
 import { api, IndexInfo, Overview, Scope, WorkspaceColor } from "../lib/api";
 import { keys, useReadOnly, useWorkspaceMutation, useWorkspaces } from "../lib/queries";
 import { indexPath, to } from "../lib/scope";
+import { ago } from "../lib/time";
 
 const tilts = [-1, 0.7, -0.4, 1.1, -0.8, 0.5];
-
-/** When something was remembered, in a friendly short form. */
-function when(ts: string | null): string {
-  if (!ts) return "";
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return "";
-  const mins = Math.round((Date.now() - d.getTime()) / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins} min ago`;
-  if (mins < 60 * 24) return `${Math.round(mins / 60)} h ago`;
-  if (mins < 60 * 24 * 14) return `${Math.round(mins / 1440)} d ago`;
-  return d.toLocaleDateString();
-}
 
 /**
  * One workspace: every index drawn as a notebook with its stats and latest
@@ -119,7 +107,7 @@ export function WorkspacePage({ ws }: { ws: string }) {
                 <li key={`${r.index}:${r.id}`}>
                   <Link href={indexPath({ ws, index: r.index }) + to.concept(r.id)}>{r.title ?? r.id}</Link>{" "}
                   {r.type && <Pill>{r.type}</Pill>}{" "}
-                  <span className="text-sm text-ink/55">in {r.index} · {when(r.timestamp)}</span>
+                  <span className="text-sm text-ink/55">in {r.index} · {ago(r.timestamp)}</span>
                 </li>
               ))}
             </ul>

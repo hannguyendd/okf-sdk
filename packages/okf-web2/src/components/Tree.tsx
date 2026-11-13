@@ -205,6 +205,7 @@ export function Tree() {
   const ctx: Ctx = { open, toggle, active, drop: readOnly ? undefined : drop };
   const rootTarget = useDropTarget("", ctx.drop);
   const atRoot = active?.kind === "dir" && active.path === "";
+  const frontTarget = useDropTarget("", ctx.drop);
   return (
     <nav aria-label="Bundle tree" onKeyDown={onKeyDown} className="relative ml-5 mb-6">
       {/* the notebook's cover, peeking out behind the page */}
@@ -215,14 +216,13 @@ export function Tree() {
         <div className="relative">
           <Sketch className={`notebook-label rotate-1 ${rootTarget.over ? "drop-target" : ""}`} {...rootTarget.props}
             rough={{ stroke: crayon.pink, strokeWidth: 2, strokeLineDash: [6, 5] }}>
-            <Link href={to.dir("")} aria-current={atRoot ? "page" : undefined}
+            <Link href={to.dir("")}
               title={ctx.drop ? "Open the front page · drop a page here to move it to the front" : "Open the front page"}
-              className={`no-wavy flex size-full min-w-0 flex-col items-center justify-center rounded-md pr-9 pl-2 text-ink no-underline hover:bg-[var(--hover)] ${atRoot ? "bg-[var(--hover)]" : ""}`}>
+              className={`no-wavy flex size-full min-w-0 flex-col items-center justify-center rounded-md pr-9 pl-2 text-ink no-underline hover:bg-[var(--hover)]`}>
               <span className="flex max-w-full items-center gap-1.5 font-head text-base font-bold">
                 <DoodleIcon name="notebook" size={22} fallback={<span aria-hidden="true">📒</span>} />
                 <span className="min-w-0 truncate">{scope.index}</span>
               </span>
-              <span className="text-xs text-ink/55">{rootTarget.over ? "drop it on the front page" : "front page"}</span>
             </Link>
           </Sketch>
           {open.size > 0 && (
@@ -239,6 +239,18 @@ export function Tree() {
         {!root.data && !root.error && <TreeSkeleton />}
         {root.data && (
           <ul role="tree" className="m-0 list-none p-0">
+            {/* the index's top level: everything at the root, plus New concept / New folder there */}
+            <li role="treeitem" aria-selected={atRoot}>
+              <div className={`flex items-center rounded-lg ${frontTarget.over ? "drop-target" : ""}`} {...frontTarget.props}>
+                <span aria-hidden="true" className="w-6 shrink-0" />
+                <Link href={to.dir("")} data-kind="dir" data-dir="" aria-current={atRoot ? "page" : undefined} className="tree-link"
+                  title={ctx.drop ? "Everything at the top of this notebook · drop a page here to move it to the top" : "Everything at the top of this notebook"}>
+                  <span aria-hidden="true" className="grid w-6 shrink-0 place-items-center text-lg leading-none">🏠</span>
+                  {atRoot && <CurrentMark />}
+                  <span className="min-w-0 truncate">Front page</span>
+                </Link>
+              </div>
+            </li>
             {root.data.directories.map((d) => <DirNode key={d.dir} d={d} ctx={ctx} />)}
             {root.data.concepts.map((c) => <ConceptRow key={c.id} c={c} dir="" active={active} draggable={!!ctx.drop} />)}
             {root.data.directories.length + root.data.concepts.length === 0 && (

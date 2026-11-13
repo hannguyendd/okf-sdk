@@ -11,6 +11,7 @@ import { Sketch } from "../doodle/Sketch";
 import { api } from "../lib/api";
 import { useConcept, useDirs, useIndexMutation, useReadOnly } from "../lib/queries";
 import { parentDir, to } from "../lib/scope";
+import { ago, formatDate } from "../lib/time";
 
 /** Rewrite a relative `.md` link in a concept body to an in-app route. */
 function resolveLink(id: string, target: string): string | null {
@@ -23,8 +24,14 @@ function resolveLink(id: string, target: string): string | null {
   return to.concept(parts.join("/"));
 }
 
-const show = (v: unknown) =>
-  Array.isArray(v) ? v.map((t) => <Pill key={String(t)}>{String(t)}</Pill>) : typeof v === "string" ? v : JSON.stringify(v);
+const show = (v: unknown) => {
+  if (Array.isArray(v)) return v.map((t) => <Pill key={String(t)}>{String(t)}</Pill>);
+  const date = formatDate(v);
+  if (date) return <time dateTime={String(v)} title={String(v)}>{date} <span className="text-ink/55">· {ago(v)}</span></time>;
+  return typeof v === "string" ? v : JSON.stringify(v);
+};
+/** Friendlier names for the keys the server manages. */
+const LABEL: Record<string, string> = { timestamp: "last updated" };
 
 export function ConceptPage({ id }: { id: string }) {
   const { data: concept, error } = useConcept(id);
@@ -101,7 +108,7 @@ export function ConceptPage({ id }: { id: string }) {
         <tbody>
           {Object.entries(rest).map(([k, v]) => (
             <tr key={k}>
-              <th className="pr-5 text-left align-top font-head font-normal text-ink/55">{k}</th>
+              <th className="pr-5 text-left align-top font-head font-normal text-ink/55">{LABEL[k] ?? k}</th>
               <td>{show(v)}</td>
             </tr>
           ))}

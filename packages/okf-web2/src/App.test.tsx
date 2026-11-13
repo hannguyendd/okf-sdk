@@ -68,7 +68,7 @@ describe("index", () => {
     expect(await tree().findByRole("link", { name: "Users" })).toBeInTheDocument();
     await user.click(tree().getByRole("button", { name: "Fold all folders" }));
     await waitFor(() => expect(tree().queryByRole("link", { name: "Users" })).not.toBeInTheDocument());
-    await user.click(tree().getByRole("link", { name: /notes\s*front page/ }));
+    await user.click(tree().getByRole("link", { name: "Front page" }));
     await waitFor(() => expect(window.location.hash).toBe("#/w/team/notes/"));
   });
 
@@ -129,6 +129,17 @@ describe("index", () => {
     expect(await screen.findByText("read-only")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "New folder" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reindex" })).not.toBeInTheDocument();
+  });
+});
+
+describe("concept page", () => {
+  it("shows the timestamp as a readable date, not raw ISO", async () => {
+    start("#/w/team/notes/c/tables/orders");
+    expect(await screen.findByText("last updated")).toBeInTheDocument();
+    const time = document.querySelector("time")!;
+    expect(time).toHaveAttribute("dateTime", "2026-11-10T10:00:00Z");
+    expect(time.textContent).toMatch(/^Nov 10, 2026, .+ · /);
+    expect(screen.queryByText("2026-11-10T10:00:00Z")).not.toBeInTheDocument();
   });
 });
 
