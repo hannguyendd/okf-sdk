@@ -1,7 +1,7 @@
 import re
 
 import pytest
-from okf_core import LocalStorage, OKFDocument
+from okf_core import LocalStorage, OKFDocument, validate_bundle
 
 from okf_mcp import operations
 
@@ -937,3 +937,34 @@ def test_search_after_dimension_change_still_covers_every_bundle(tmp_path):
     ws.bundle_storage("b").write_text("x/_index.md", "beta extra")  # only b changed
     hits = _search(ws, "beta", tmp_path, _Wider(), top_k=10)
     assert {h["bundle"] for h in hits} == {"a", "b"}
+
+
+def test_create_directory_writes_listing_log_and_parent_index(tmp_path):
+    r = operations.create_directory(tmp_path, "guides/setup", "How to set things up")
+    assert r["action"] == "created" and r["dir"] == "guides/setup"
+    index = OKFDocument.parse((tmp_path / "guides" / "setup" / "_index.md").read_text())
+    assert index.frontmatter.get("description") == "How to set things up"
+    assert "Created this directory" in (tmp_path / "guides" / "setup" / "_log.md").read_text()
+    assert "* [setup](setup/_index.md) - How to set things up" in (tmp_path / "guides" / "_index.md").read_text()
+    assert validate_bundle(tmp_path) == []
+    # a concept can then be added into it
+    operations.add_concept(tmp_path, "guides/setup/install", {"type": "Playbook"}, "x")
+    assert (tmp_path / "guides" / "setup" / "install.md").is_file()
+
+
+def test_create_directory_without_description(tmp_path):
+    operations.create_directory(tmp_path, "empty")
+    assert (tmp_path / "empty" / "_index.md").is_file()
+    assert "description" not in OKFDocument.parse((tmp_path / "empty" / "_index.md").read_text()).frontmatter
+
+
+@pytest.mark.parametrize("bad", ["", "/", "../out", "a/../../b", "bad name", "a/.hidden"])
+def test_create_directory_rejects_bad_dirs(tmp_path, bad):
+    with pytest.raises(ValueError):
+        operations.create_directory(tmp_path, bad)
+
+
+def test_create_directory_rejects_existing(tmp_path):
+    operations.create_directory(tmp_path, "notes")
+    with pytest.raises(FileExistsError):
+        operations.create_directory(tmp_path, "notes")
