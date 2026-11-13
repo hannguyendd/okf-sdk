@@ -148,6 +148,10 @@ def _regenerate(storage: Storage, synthesize: Synthesizer) -> list[str]:
                 )
 
         if not entries:
+            # An empty directory keeps its listing as written; its authored
+            # description still captions it in the parent's listing.
+            if directory and authored:
+                dir_descriptions[directory] = authored
             continue
 
         # Preserve only allowlisted frontmatter: description (any level) and
