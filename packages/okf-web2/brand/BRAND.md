@@ -188,6 +188,8 @@ Scale: page title 36 px · section 24 px · body 18 px · small 14 px.
 | Washi tape on corners | the main page sheet |
 | Sticky note | concept body, messages |
 | Margin doodles (sun, cloud, house, flower, stars) | large screens only |
+| Inked arrow cursor; crayon pencil over anything clickable (text fields keep the I-beam) | everywhere (`src/app.css`) |
+| Writing sits on the rules: lead copy snaps to the 32 px lines | landing hero, Get started |
 
 ### Motion
 

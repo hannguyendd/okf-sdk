@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, MotionConfig, useScroll, useSpring, useTransform } from "motion/react";
-import { AnchorHTMLAttributes, ReactNode, useState } from "react";
+import { AnchorHTMLAttributes, ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { DoodleIcon, IconName } from "../doodle/DoodleIcon";
 import { Mark } from "../doodle/Mark";
@@ -17,7 +17,8 @@ const decor = import.meta.glob<string>("../assets/doodles/decor/*.png", { eager:
 /** A margin doodle (sun, cloud, paper plane…) that scrolls with its section and drifts a little. */
 function Decor({ name, className }: { name: string; className: string }) {
   const src = decor[`../assets/doodles/decor/${name}.png`];
-  return src ? <img src={src} alt="" aria-hidden="true" style={{ animationDelay: `${-name.length * 0.7}s` }}
+  // lazy + display:none below lg means phones never download the doodles
+  return src ? <img src={src} alt="" aria-hidden="true" loading="lazy" decoding="async" style={{ animationDelay: `${-name.length * 0.7}s` }}
     className={`decor-drift pointer-events-none absolute hidden select-none lg:block ${className}`} /> : null;
 }
 
@@ -42,9 +43,9 @@ const stick = (i: number) => ({
   transition: { type: "spring" as const, stiffness: 320, damping: 17, delay: (i % 4) * 0.09 },
 });
 
-function GitHubIcon({ size = 22 }: { size?: number }) {
+function GitHubIcon() {
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width={18} height={18} fill="currentColor" aria-hidden="true">
       <path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57l-.02-2.04c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49 1 .1-.78.42-1.3.76-1.6-2.67-.31-5.47-1.34-5.47-5.94 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.43.37.82 1.1.82 2.22l-.02 3.29c0 .32.22.7.83.57A12 12 0 0 0 12 .3" />
     </svg>
   );
@@ -59,10 +60,12 @@ function StarIcon() {
   );
 }
 
-function Art({ name, fallback, alt = "", className = "" }: { name: string; fallback: Pose; alt?: string; className?: string }) {
+/** Landing art; `eager` for the hero (the largest paint), everything else waits until it's scrolled near. */
+function Art({ name, fallback, alt = "", eager, className = "" }: { name: string; fallback: Pose; alt?: string; eager?: boolean; className?: string }) {
   const src = img(name);
   if (!src) return <Okie pose={fallback} size={420} className={className} />;
-  return <img src={src} alt={alt} aria-hidden={alt ? undefined : true} className={`object-contain ${className}`} />;
+  return <img src={src} alt={alt} aria-hidden={alt ? undefined : true} loading={eager ? "eager" : "lazy"} fetchPriority={eager ? "high" : undefined}
+    decoding="async" className={`object-contain ${className}`} />;
 }
 
 /** A link drawn like a crayon button. */
@@ -71,6 +74,35 @@ function LinkBtn({ tone = "yellow", tilt = -1.5, big, className = "", ...props }
     <Sketch as="a" rough={{ ...scribble(tone), roughness: 2.1 }} pad={1} style={{ rotate: `${tilt}deg` }}
       className={`doodle-btn no-wavy inline-block no-underline ${big ? "px-6 text-xl leading-[3rem]" : "px-4 leading-9"} ${className}`} {...props} />
   );
+}
+
+/** Notebook rules on the body background: one every 32 px from the top of the page. */
+const RULE = 32;
+/** Baselines land ~23 px into a 32 px line, so a line box starting 6 px past a rule boundary writes on the rule. */
+const SIT = 6;
+
+/** Pads an element's top so its 32 px lines of text sit on the page's notebook rules. */
+function useOnRules<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const snap = () => {
+      // offsetTop ignores transforms, so reveal animations don't throw it off
+      let top = 0;
+      for (let n: HTMLElement | null = el; n; n = n.offsetParent as HTMLElement | null) top += n.offsetTop;
+      const pad = `${(((SIT - top) % RULE) + RULE) % RULE}px`;
+      if (el.style.paddingTop !== pad) el.style.paddingTop = pad;
+    };
+    snap();
+    document.fonts?.ready.then(snap);
+    if (typeof ResizeObserver === "undefined") return;
+    // anything above growing or shrinking (fonts, images, a resize) moves us; re-snap
+    const ro = new ResizeObserver(snap);
+    ro.observe(document.body);
+    return () => ro.disconnect();
+  }, []);
+  return ref;
 }
 
 function Section({ id, title, kicker, children, className = "" }: { id?: string; title: ReactNode; kicker?: string; children: ReactNode; className?: string }) {
@@ -82,6 +114,53 @@ function Section({ id, title, kicker, children, className = "" }: { id?: string;
       </Reveal>
       {children}
     </section>
+  );
+}
+
+const STARS_KEY = "okf-landing-stars";
+
+/** The repo's star count from the GitHub API, cached for the tab; null until (or unless) it loads. */
+function useStars() {
+  const [stars, setStars] = useState<number | null>(() => {
+    try {
+      const cached = Number(sessionStorage.getItem(STARS_KEY) ?? NaN);
+      return Number.isFinite(cached) ? cached : null;
+    } catch { return null; } // storage blocked (private mode, sandboxed frame)
+  });
+  useEffect(() => {
+    if (stars !== null) return;
+    const ac = new AbortController();
+    fetch(REPO.replace("github.com", "api.github.com/repos"), { signal: ac.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (typeof d?.stargazers_count !== "number") return;
+        try { sessionStorage.setItem(STARS_KEY, String(d.stargazers_count)); } catch { /* fine, refetch next time */ }
+        setStars(d.stargazers_count);
+      })
+      .catch(() => { /* offline or rate-limited: the button just says "Star" */ });
+    return () => ac.abort();
+  }, [stars]);
+  return stars;
+}
+
+const compact = new Intl.NumberFormat("en", { notation: "compact" });
+
+/** One crayon pill: GitHub mark, a star, and the live star count. */
+function StarButton() {
+  const stars = useStars();
+  const label = stars === null ? "Star Okie on GitHub" : `Star Okie on GitHub (${stars} ${stars === 1 ? "star" : "stars"})`;
+  return (
+    <LinkBtn href={REPO} tone="yellow" tilt={-2} className="star-btn px-3" aria-label={label} title={label}>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="hidden items-center gap-1.5 sm:inline-flex">
+          <GitHubIcon />
+          <span aria-hidden="true" className="h-5 border-l-2 border-dotted border-ink/40" />
+        </span>
+        <StarIcon />
+        <span className="hidden sm:inline">Star</span>
+        {stars !== null && <span className="tabular-nums">{compact.format(stars)}</span>}
+      </span>
+    </LinkBtn>
   );
 }
 
@@ -97,19 +176,11 @@ function Nav() {
           <a href="#how" className="no-wavy text-ink no-underline hover:underline">How it works</a>
           <a href="#look" className="no-wavy text-ink no-underline hover:underline">Look inside</a>
           <a href="#faq" className="no-wavy text-ink no-underline hover:underline">FAQ</a>
+          <a href="#start" className="no-wavy text-ink no-underline hover:underline">Get started</a>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3 lg:ml-0">
           <ThemeToggle />
-          <Sketch as="a" href={REPO} shape="ellipse" aria-label="GitHub" title="Okie’s code on GitHub" rough={{ strokeWidth: 1.6 }}
-            className="no-wavy grid size-10 place-items-center text-ink no-underline hover:[animation:wiggle_0.4s_ease-in-out] motion-reduce:hover:animate-none">
-            <GitHubIcon />
-          </Sketch>
-          <span className="hidden sm:block">
-            <LinkBtn href={REPO} tone="yellow" tilt={-2} className="star-btn" title="Star Okie on GitHub">
-              <span className="inline-flex items-center gap-1.5"><StarIcon />Star</span>
-            </LinkBtn>
-          </span>
-          <span className="hidden lg:block"><LinkBtn href="#start" tone="green" tilt={1.5}>Wake Okie up</LinkBtn></span>
+          <StarButton />
         </div>
       </nav>
     </header>
@@ -117,6 +188,7 @@ function Nav() {
 }
 
 function Hero() {
+  const lead = useOnRules<HTMLParagraphElement>();
   return (
     <section id="top" className="relative mx-auto grid max-w-6xl items-center gap-8 pr-5 pl-[72px] md:px-5 pt-10 pb-6 md:grid-cols-[1.05fr_1fr] md:pt-16">
       <div className="min-w-0">
@@ -136,21 +208,21 @@ function Hero() {
           ))}
         </h1>
         <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease, delay: 1.1 }}>
-        <p className="mt-6 max-w-xl text-xl leading-8 text-ink/85">
-          Meet <b>Okie</b>, a tired little snail who keeps everything your team knows in neat notebooks.
-          You write in the web app, your AI helpers write through MCP, and Okie keeps it all tidy, linked and findable.
-          Slowly. With a sigh. But it never forgets.
+        <p ref={lead} className="mt-2 max-w-xl font-head text-lg leading-8 text-ink/85">
+          Meet <b className="font-bold text-ink">Okie</b>, a tired little snail who keeps everything your team knows in neat notebooks.
+          You write in the web app, your AI helpers write through MCP, and Okie puts every page in the right place
+          and finds it again when you ask. It’s slow and it sighs a lot, but it never forgets.
         </p>
         <div className="mt-8 flex flex-wrap items-center gap-5">
           <LinkBtn href="#start" big tone="yellow">Wake Okie up</LinkBtn>
           <LinkBtn href="#how" big tone="blue" tilt={1.2}>How does it work?</LinkBtn>
         </div>
-        <p className="mt-5 text-ink/60">Free, open source, runs on your own computer. No account. No cloud. Just a snail.</p>
+        <p className="mt-5 text-ink/60">Free and open source. It runs on your own computer, with no account and no cloud. Just a snail.</p>
         </motion.div>
       </div>
       {/* Okie crawls in from the margin, slowly, as snails do */}
       <motion.div className="relative" initial={{ opacity: 0, x: 140 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 2.4, ease: "easeOut", delay: 0.2 }}>
-        <Art name="okie-hauling.png" fallback="writing" alt="Okie the snail hauling a huge wobbly stack of notebooks" className="mx-auto w-full max-w-[520px] [animation:okie-bob_3.2s_ease-in-out_infinite]" />
+        <Art name="okie-hauling.png" fallback="writing" eager alt="Okie the snail hauling a huge wobbly stack of notebooks" className="mx-auto w-full max-w-[520px] [animation:okie-bob_3.2s_ease-in-out_infinite]" />
         <motion.span aria-hidden="true" className="absolute top-4 right-6 rotate-6 font-hand text-2xl text-ink/60"
           initial={{ opacity: 0, y: 10 }} animate={{ opacity: [0, 1, 1, 0.35, 1], y: [10, 0, -6, 0, 0] }}
           transition={{ duration: 4, delay: 2.5, repeat: Infinity, repeatDelay: 2 }}>
@@ -191,7 +263,7 @@ function Pains() {
         <figure className="m-0 text-center">
           <Art name="okie-coffee.png" fallback="sigh" className="mx-auto w-full max-w-[340px] [animation:okie-bob_4s_ease-in-out_infinite]" />
           <figcaption className="mt-2 text-lg text-ink/75">
-            Okie has heard every one of these about 400 times.<br />It’s 2am. Okie is still up. Okie would like to stop.
+            Okie has heard every one of these about 400 times.<br />It’s 2am, Okie is still up, and Okie would like to stop.
           </figcaption>
         </figure>
         </Reveal>
@@ -202,8 +274,8 @@ function Pains() {
 
 const STEPS: { n: string; title: string; body: string; pose: Pose; art?: string; tone: Tone }[] = [
   { n: "1", title: "Tell Okie", body: "Type a note in the notebook app, or let your AI assistant drop it in through MCP. Markdown, a title, a few tags. That’s it.", pose: "wave", tone: "yellow" },
-  { n: "2", title: "Okie files it", body: "Into the right notebook and folder. Listings, change logs and links update themselves. Move a page and Okie fixes every link to it.", pose: "writing", tone: "pink" },
-  { n: "3", title: "Ask later", body: "Browse the spiral-notebook explorer, follow links both ways, or search in plain words. Okie digs it up. Eventually.", pose: "reading", art: "okie-found-it.png", tone: "green" },
+  { n: "2", title: "Okie “files” it", body: "Okie puts the page in the right notebook and folder. Folder lists and the change log update themselves, and if you move a page, Okie fixes every link that points to it.", pose: "writing", tone: "pink" },
+  { n: "3", title: "Ask later", body: "Flip through your notebooks, jump between linked pages, or just ask in plain words. Okie finds it for you. Eventually.", pose: "reading", art: "okie-found-it.png", tone: "green" },
 ];
 
 function How() {
@@ -246,7 +318,7 @@ function Everyone() {
 
 const SHOTS: { file: string; title: string; caption: string; tone: Tone; tilt: number }[] = [
   { file: "shot-workspace.webp", title: "Notebooks", caption: "Each workspace is a stack of notebooks, plus what Okie remembered most recently.", tone: "blue", tilt: -1.2 },
-  { file: "shot-concept.webp", title: "Pages", caption: "The explorer is a real spiral notebook. Drag pages into folders; links get fixed for you.", tone: "pink", tilt: 0.9 },
+  { file: "shot-concept.webp", title: "Pages", caption: "Pages live in a spiral notebook. Drag one into another folder and Okie fixes its links.", tone: "pink", tilt: 0.9 },
   { file: "shot-dark.webp", title: "Night shift", caption: "Chalkboard dark mode. Because Okie works late.", tone: "green", tilt: -0.7 },
 ];
 
@@ -278,7 +350,7 @@ function Look() {
                 initial={{ opacity: 0, rotateY: 55, x: 30 }} animate={{ opacity: 1, rotateY: 0, x: 0 }} exit={{ opacity: 0, rotateY: -55, x: -30 }}
                 transition={{ duration: 0.35, ease }}>
                 {src
-                  ? <img src={src} alt={shot.caption} className="block size-full object-cover object-top" />
+                  ? <img src={src} alt={shot.caption} loading="lazy" decoding="async" className="block size-full object-cover object-top" />
                   : <div className="grid size-full place-items-center text-ink/50">screenshot coming soon</div>}
               </motion.div>
             </AnimatePresence>
@@ -294,17 +366,17 @@ function Look() {
 const FEATURES: { icon: IconName; title: string; body: string; tone: Tone }[] = [
   { icon: "notebook", title: "Notebooks & folders", body: "Make them, fill them, drag pages between them.", tone: "blue" },
   { icon: "pencil", title: "Plain markdown", body: "Titles, tags, tables, links. Just text files on your disk.", tone: "yellow" },
-  { icon: "link", title: "Links both ways", body: "Every page shows what it links to, and who links back.", tone: "pink" },
-  { icon: "search", title: "Search in normal words", body: "Plug in a local embeddings server and just ask.", tone: "green" },
-  { icon: "refresh", title: "Self-tidying", body: "Listings and change logs rewrite themselves after every edit.", tone: "orange" },
+  { icon: "link", title: "Links both ways", body: "Each page shows the pages it links to, and the pages that link back to it.", tone: "pink" },
+  { icon: "search", title: "Search in plain words", body: "Connect a local embedding server, then ask the way you’d ask a person.", tone: "green" },
+  { icon: "refresh", title: "Tidies itself", body: "Folder lists and the change log update themselves after every edit.", tone: "orange" },
   { icon: "palette", title: "Crayon colours", body: "Seven crayons, one per workspace. Choose wisely.", tone: "purple" },
   { icon: "move", title: "MCP for AI agents", body: "Claude and friends read and write the same notebooks.", tone: "red" },
-  { icon: "check", title: "Stays on your machine", body: "No cloud, no login, no tracking. Just a snail.", tone: "green" },
+  { icon: "check", title: "Stays on your machine", body: "No cloud, no login, no tracking. Your notes never leave your computer.", tone: "green" },
 ];
 
 function Features() {
   return (
-    <Section title="What’s in Okie’s shell" kicker="Features">
+    <Section title="What’s in Okie’s “shell”" kicker="Features">
       <Decor name="rainbow" className="top-2 right-4 w-36" />
       <ul className="m-0 grid list-none gap-6 p-0 sm:grid-cols-2 lg:grid-cols-4">
         {FEATURES.map((f, i) => (
@@ -331,6 +403,7 @@ cd packages/okf-web2 && bun install && bun run build && cd -
 uv run okf-web --static packages/okf-web2/dist`;
 
 function Start() {
+  const lines = useOnRules<HTMLDivElement>();
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try { await navigator.clipboard.writeText(SETUP); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* no clipboard */ }
@@ -339,15 +412,18 @@ function Start() {
     <Section id="start" title="Wake Okie up (about 2 minutes)" kicker="Get started">
       <div className="grid items-center gap-10 md:grid-cols-[1.5fr_1fr]">
         <Reveal className="min-w-0">
-          <p className="mb-4 text-lg">You need <a href="https://docs.astral.sh/uv/">uv</a> and <a href="https://bun.sh/">Bun</a>. Then:</p>
-          <Sketch className="relative -rotate-[0.5deg] bg-note px-5 py-4" rough={{ strokeWidth: 2 }}>
-            <pre className="m-0 overflow-x-auto font-mono text-sm leading-7 whitespace-pre text-ink">{SETUP}</pre>
-            <button onClick={copy} className="doodle-btn absolute top-2 right-3 cursor-pointer text-sm text-ink/70 hover:text-ink">
-              {copied ? "copied ✓" : "copy"}
-            </button>
-          </Sketch>
-          <p className="mt-4 text-lg">Open <b>http://127.0.0.1:8765</b>, make a workspace, make a notebook, write something. Okie takes it from there.</p>
-          <p className="mt-2 text-lg">Want your AI to help? The <a href={DOCS}>boring page</a> shows how to plug in the MCP server.</p>
+          <div ref={lines} className="font-head text-lg leading-8">
+            <p>You need <a href="https://docs.astral.sh/uv/">uv</a> and <a href="https://bun.sh/">Bun</a>. Then:</p>
+            {/* py-4 + four 32 px lines + my-4 = six rules tall, so the text after it stays on the lines */}
+            <Sketch className="relative my-4 bg-note px-5 py-4" rough={{ strokeWidth: 2 }}>
+              <pre className="m-0 overflow-x-auto pr-14 font-mono text-sm leading-8 whitespace-pre text-ink">{SETUP}</pre>
+              <button onClick={copy} className="doodle-btn absolute top-1 right-3 cursor-pointer text-sm text-ink/70 hover:text-ink">
+                {copied ? "copied ✓" : "copy"}
+              </button>
+            </Sketch>
+            <p>Open <b className="font-bold">http://127.0.0.1:8765</b>, make a workspace, make a notebook, write something. Okie takes it from there.</p>
+            <p>Want your AI to help too? The <a href={DOCS}>technical docs</a> (the “boring page”) show how to connect the MCP server.</p>
+          </div>
         </Reveal>
         <Reveal x={80} delay={0.2}><Okie pose="writing" size={360} className="mx-auto w-full max-w-[360px]" /></Reveal>
       </div>
@@ -356,11 +432,11 @@ function Start() {
 }
 
 const FAQ: [string, ReactNode][] = [
-  ["Why a snail?", "Slow, carries its house around, leaves a trail. Also nobody else wanted the job."],
+  ["Why a snail?", "Snails are slow, carry their house everywhere and leave a trail behind them. Also, nobody else wanted the job."],
   ["Where do my notes actually go?", <>Plain markdown files in <code>~/.okf/workspaces/</code>. Edit them anywhere, commit them, grep them.</>],
   ["Can my AI assistant use it?", "Yes. Plug the MCP server into Claude (or any MCP client) and it reads and writes the same notebooks you see in the app."],
-  ["Is it safe to put on the internet?", "No. There’s no login. Keep it on your own machine. Okie is a homebody."],
-  ["Does it cost anything?", "No. Okie works for free. Okie has made some poor life choices."],
+  ["Is it safe to put on the internet?", "No. There’s no login, so keep it on your own machine. Okie is a homebody."],
+  ["Does it cost anything?", "No, Okie works for free. Okie has made some poor life choices."],
   ["Why is Okie so tired?", "You’d be tired too."],
 ];
 
@@ -397,7 +473,6 @@ function Footer() {
       <p className="text-lg text-ink/70">Come back when you forget something. You will.</p>
       <div className="mt-6 flex flex-wrap justify-center gap-5">
         <LinkBtn href="#start" tone="green">Fine, let’s go</LinkBtn>
-        <LinkBtn href={REPO} tone="pink" tilt={1} className="star-btn"><span className="inline-flex items-center gap-1.5"><StarIcon />Star it on GitHub</span></LinkBtn>
         <LinkBtn href={DOCS} tone="blue" tilt={-0.8}>The boring docs</LinkBtn>
       </div>
       <p className="mt-10 text-sm text-ink/50">Made with crayons and a sigh. Built on the Open Knowledge Format.</p>

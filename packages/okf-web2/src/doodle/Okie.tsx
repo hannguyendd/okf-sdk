@@ -17,7 +17,7 @@ export const markUrl: string | undefined = Object.values(brandMark)[0];
 /** Okie the snail in a pose; decorative (alt=""), so pair it with text. */
 export function Okie({ pose = "sigh", size = 160, className = "" }: { pose?: Pose; size?: number; className?: string }) {
   const src = okiePoses[`../assets/doodles/okie/okie-${pose}.png`];
-  if (src) return <img src={src} alt="" aria-hidden="true" width={size} height={size * 0.75} className={`shrink-0 object-contain ${className}`} />;
+  if (src) return <img src={src} alt="" aria-hidden="true" loading="lazy" decoding="async" width={size} height={size * 0.75} className={`shrink-0 object-contain ${className}`} />;
   return <OkieSketch size={size} asleep={pose === "asleep"} className={className} />;
 }
 
