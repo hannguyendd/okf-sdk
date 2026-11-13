@@ -7,7 +7,7 @@ import { markUrl, Okie, OkieSketch, Pose } from "../doodle/Okie";
 import { crayon, scribble, Sketch, Tone } from "../doodle/Sketch";
 
 const REPO = "https://github.com/hannguyendd/okf-sdk";
-const DOCS = `${REPO}/blob/okf-web-v2/docs/TECHNICAL.md`;
+const DOCS = `${REPO}/blob/main/docs/TECHNICAL.md`;
 
 /** Landing art and screenshots (src/assets/landing), picked up when present; Okie poses fill any gap. */
 const art = import.meta.glob<string>("../assets/landing/*.{png,webp}", { eager: true, query: "?url", import: "default" });

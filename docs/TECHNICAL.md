@@ -83,6 +83,12 @@ The landing page is a second Vite entry (`landing.html` → `src/landing/`).
 In dev open `http://localhost:5173/landing.html`; `bun run build` writes
 `dist/landing.html`, which `okf-web --static` serves at `/landing.html`.
 
+The landing page is also published to GitHub Pages
+(https://hannguyendd.github.io/okf-sdk/) by `.github/workflows/landing-pages.yml`
+on every push to `main` that touches `packages/okf-web2`: it builds with
+`--base=./` and ships `landing.html` as the site's `index.html`. One-time setup
+(repo admin): Settings → Pages → Source: **GitHub Actions**.
+
 Add `?intro` to the app URL to replay the opening animation (it plays once per tab,
 and never under `prefers-reduced-motion`).
 

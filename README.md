@@ -88,8 +88,9 @@ uv run okf-web --static packages/okf-web2/dist
 Open **http://127.0.0.1:8765**, make a workspace, make a notebook, write something.
 I'll take it from there.
 
-Want the sales pitch first? My landing page lives at **http://127.0.0.1:8765/landing.html**.
-I made it myself. With crayons.
+Want the sales pitch first? My landing page is online at
+**https://hannguyendd.github.io/okf-sdk/**, and on your own machine at
+**http://127.0.0.1:8765/landing.html**. I made it myself. With crayons.
 
 <img src="docs/images/landing.png" alt="The OK, Fine Memory landing page" width="100%">
 
