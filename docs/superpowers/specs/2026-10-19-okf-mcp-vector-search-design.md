@@ -1,5 +1,7 @@
 # okf-mcp: vector search over `_index.md` files — design
 
+**Superseded in part by:** `2026-10-26-okf-workspace-targeting-design.md` — one vector DB per workspace (`<workspace>/.okf/vectors.db`) with rows keyed by bundle, bundle-description hits, and no `OKF_VECTOR_DB`.
+
 Date: 2026-10-19. Status: draft for review. Roadmap item 3 in `docs/TODO.md`
 ("Vectorize index files to improve search").
 

@@ -1,4 +1,4 @@
-"""Starlette HTTP API over ``okf_mcp.operations`` for one fixed bundle root."""
+"""Starlette HTTP API over ``okf_mcp.operations`` for the bundles of a workspace registry."""
 
 from __future__ import annotations
 
@@ -17,8 +17,8 @@ from okf_core import (
     RESERVED_STEMS,
     OKFDocument,
     Storage,
+    Workspace,
     WorkspaceRegistry,
-    open_storage,
 )
 from okf_mcp import operations
 
@@ -60,25 +60,16 @@ def _tree(storage: Storage, dir: str | None) -> dict:
 
 
 def create_app(
-    bundle_root=None,
+    registry: WorkspaceRegistry,
     *,
-    registry: WorkspaceRegistry | None = None,
     read_only: bool = False,
     search_config=None,
     search_max_chars: int = 6000,
-    vector_db: str | None = None,
     static_dir: Path | str | None = None,
 ) -> Starlette:
-    """Serve one fixed bundle (``bundle_root``) or a workspace registry.
-
-    In workspace mode each index is addressed under
-    ``/api/workspaces/{workspace}/indexes/{index}`` with the same bundle routes;
-    ``vector_db`` applies only to the fixed bundle (indexes use the default
-    sibling file so they never share a vector store).
-    """
-    if bundle_root is None and registry is None:
-        raise ValueError("create_app needs a bundle_root or a registry")
-    fixed = open_storage(bundle_root) if bundle_root is not None else None
+    """Serve a workspace registry: each bundle (index) is addressed under
+    ``/api/workspaces/{workspace}/indexes/{index}``; search uses the workspace's
+    ``.okf/vectors.db``."""
 
     def guard() -> None:
         if read_only:
@@ -116,8 +107,8 @@ def create_app(
 
     def info(request, body):
         return {
-            "mode": "workspace" if fixed is None else "bundle",
-            "location": str(registry.root) if fixed is None else fixed.location,
+            "mode": "workspace",
+            "location": registry.storage.location,
             "read_only": read_only,
             "search_enabled": search_config is not None,
         }
@@ -125,15 +116,28 @@ def create_app(
     def bundle_routes(prefix: str, resolve) -> list[Route]:
         """The per-bundle API; ``resolve(request)`` yields that request's Storage."""
 
+        def workspace(request) -> Workspace:
+            return registry.get(request.path_params["workspace"])
+
+        def bundle_info(request, body):
+            ws, name = workspace(request), request.path_params["index"]
+            ws.bundle_storage(name)  # 404 for an unknown bundle
+            return {"workspace": ws.name, "bundle": name, "description": ws.description(name)}
+
+        def describe_bundle(request, body):
+            ws, name = workspace(request), request.path_params["index"]
+            stored = ws.set_description(name, body["description"])
+            return {"workspace": ws.name, "bundle": name, "description": stored}
+
         def search(request, body):
-            return operations.search_indexes(
-                resolve(request),
+            return operations.search_workspace(
+                workspace(request),
                 q(request, "q", ""),
                 int(q(request, "top_k", 5)),
+                [request.path_params["index"]],
                 q(request, "dir"),
                 config=search_config,
                 max_chars=search_max_chars,
-                db_path=vector_db if fixed is not None else None,
             )
 
         def r(path, fn, methods, **kw):
@@ -190,39 +194,37 @@ def create_app(
             ),
             r("/reindex", lambda rq, b: operations.reindex_bundle(resolve(rq)), ["POST"], write=True),
             r("/search", search, ["GET"]),
+            r("/bundle", bundle_info, ["GET"]),
+            r("/bundle/describe", describe_bundle, ["POST"], write=True),
         ]
 
-    routes = [Route("/api/info", handler(info))]
+    def index_storage(request: Request) -> Storage:
+        ws = registry.get(request.path_params["workspace"])
+        return ws.bundle_storage(request.path_params["index"])
 
-    if fixed is not None:
-        routes += bundle_routes("/api", lambda request: fixed)
-    else:
+    def list_workspaces(request, body):
+        return [{"name": w.name, "indexes": w.bundles_info()} for w in registry.list()]
 
-        def index_storage(request: Request) -> Storage:
-            ws = registry.get(request.path_params["workspace"])
-            return open_storage(ws.index_root(request.path_params["index"]))
+    def create_workspace(request, body):
+        registry.create(body["name"])
+        return {"name": body["name"], "indexes": []}
 
-        def list_workspaces(request, body):
-            return [{"name": w.name, "indexes": w.indexes()} for w in registry.list()]
+    def create_index(request, body):
+        ws = registry.get(request.path_params["workspace"])
+        result = operations.create_bundle(ws, body["name"], body.get("description"))
+        return {"name": result["bundle"], "description": result["description"]}
 
-        def create_workspace(request, body):
-            registry.create(body["name"])
-            return {"name": body["name"], "indexes": []}
-
-        def create_index(request, body):
-            registry.get(request.path_params["workspace"]).create_index(body["name"])
-            return {"name": body["name"]}
-
-        routes += [
-            Route("/api/workspaces", handler(list_workspaces), methods=["GET"]),
-            Route("/api/workspaces", handler(create_workspace, write=True, status=201), methods=["POST"]),
-            Route(
-                "/api/workspaces/{workspace}/indexes",
-                handler(create_index, write=True, status=201),
-                methods=["POST"],
-            ),
-        ]
-        routes += bundle_routes("/api/workspaces/{workspace}/indexes/{index}", index_storage)
+    routes = [
+        Route("/api/info", handler(info)),
+        Route("/api/workspaces", handler(list_workspaces), methods=["GET"]),
+        Route("/api/workspaces", handler(create_workspace, write=True, status=201), methods=["POST"]),
+        Route(
+            "/api/workspaces/{workspace}/indexes",
+            handler(create_index, write=True, status=201),
+            methods=["POST"],
+        ),
+    ]
+    routes += bundle_routes("/api/workspaces/{workspace}/indexes/{index}", index_storage)
 
     if static_dir is not None:
         root = Path(static_dir).resolve()

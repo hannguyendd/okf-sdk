@@ -33,7 +33,10 @@ export default function WorkspaceHome({ readOnly }: { readOnly: boolean }) {
           {w.indexes.length === 0 && <p className="text-stone-500">No indexes.</p>}
           <ul>
             {w.indexes.map((i) => (
-              <li key={i}><a href={scopeHref({ ws: w.name, index: i })}>{i}</a></li>
+              <li key={i.name}>
+                <a href={scopeHref({ ws: w.name, index: i.name })}>{i.name}</a>
+                {i.description && <span className="text-stone-500"> — {i.description}</span>}
+              </li>
             ))}
           </ul>
           {!readOnly && (

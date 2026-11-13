@@ -189,7 +189,7 @@ describe("workspaces", () => {
     await waitFor(() => expect(api.workspaces.some((w) => w.name === "fresh")).toBe(true));
     prompt.mockReturnValueOnce("mem");
     await user.click(await screen.findByRole("button", { name: "New index in fresh" }));
-    await waitFor(() => expect(api.workspaces.find((w) => w.name === "fresh")!.indexes).toEqual(["mem"]));
+    await waitFor(() => expect(api.workspaces.find((w) => w.name === "fresh")!.indexes).toEqual([{ name: "mem", description: null }]));
     expect(await screen.findByRole("link", { name: "mem" })).toBeInTheDocument();
   });
 
@@ -246,5 +246,75 @@ describe("tree view", () => {
     expect(dir).toHaveFocus();
     await user.keyboard("{ArrowLeft}");
     expect(nav().queryByRole("link", { name: "Orders" })).toBeNull();
+  });
+});
+
+describe("index description", () => {
+  it("lists index descriptions on the workspaces page", async () => {
+    installFakeApi({ workspaces: true });
+    render(<App />);
+    expect(await screen.findByText(/Meeting notes/)).toBeInTheDocument();
+  });
+
+  it("shows the open index's description in the header", async () => {
+    installFakeApi({ workspaces: true });
+    window.location.hash = "#/w/work/notes/";
+    render(<App />);
+    const header = screen.getByRole("banner");
+    expect(await within(header).findByText("Meeting notes")).toBeInTheDocument();
+  });
+
+  it("edits the index description via the bundle describe route", async () => {
+    const api = installFakeApi({ workspaces: true });
+    vi.spyOn(window, "prompt").mockReturnValue("New purpose");
+    const user = userEvent.setup();
+    window.location.hash = "#/w/work/notes/";
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Edit index description" }));
+    expect(await within(screen.getByRole("banner")).findByText("New purpose")).toBeInTheDocument();
+    const call = api.calls.find((c) => c.url === "/api/workspaces/work/indexes/notes/bundle/describe")!;
+    expect(call.method).toBe("POST");
+    expect(call.body).toEqual({ description: "New purpose" });
+  });
+
+  it("an empty prompt clears the description", async () => {
+    const api = installFakeApi({ workspaces: true });
+    vi.spyOn(window, "prompt").mockReturnValue("");
+    const user = userEvent.setup();
+    window.location.hash = "#/w/work/notes/";
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Edit index description" }));
+    expect(await within(screen.getByRole("banner")).findByText("No description")).toBeInTheDocument();
+    expect(api.calls.find((c) => c.url.endsWith("/bundle/describe"))!.body).toEqual({ description: null });
+  });
+
+  it("a cancelled prompt changes nothing", async () => {
+    const api = installFakeApi({ workspaces: true });
+    vi.spyOn(window, "prompt").mockReturnValue(null);
+    const user = userEvent.setup();
+    window.location.hash = "#/w/work/notes/";
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Edit index description" }));
+    expect(api.calls.some((c) => c.url.endsWith("/bundle/describe"))).toBe(false);
+  });
+
+  it("hides the edit control when read-only", async () => {
+    installFakeApi({ workspaces: true, readOnly: true });
+    window.location.hash = "#/w/work/notes/";
+    render(<App />);
+    expect(await within(screen.getByRole("banner")).findByText("Meeting notes")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit index description" })).toBeNull();
+  });
+
+  it("renders a description search hit linking to the index root", async () => {
+    installFakeApi({ workspaces: true, search: true });
+    const user = userEvent.setup();
+    window.location.hash = "#/w/work/notes/";
+    render(<App />);
+    await user.type(await screen.findByRole("searchbox"), "meetings{Enter}");
+    const main = screen.getByRole("main");
+    const link = await within(main).findByRole("link", { name: "index notes" });
+    expect(link.getAttribute("href")).toBe("#/w/work/notes/d/");
+    expect(within(main).getByText("Meeting notes excerpt")).toBeInTheDocument();
   });
 });

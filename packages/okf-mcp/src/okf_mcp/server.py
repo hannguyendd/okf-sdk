@@ -1,19 +1,26 @@
-"""FastMCP producer server exposing okf_mcp.operations as MCP tools."""
+"""FastMCP producer server exposing okf_mcp.operations as MCP tools.
+
+Every tool acts on a bundle inside a workspace (``~/.okf/workspaces/<ws>/<bundle>``,
+home overridable by ``OKF_HOME``). ``workspace``/``bundle`` are optional on every
+tool: they default from the ``X-OKF-Workspace``/``X-OKF-Bundle`` request headers
+(streamable-HTTP), then ``OKF_WORKSPACE``/``OKF_BUNDLE``, then the pick remembered
+for this session, and otherwise the user is asked (see ``okf_mcp.target``).
+"""
 
 from __future__ import annotations
 
+import argparse
 import asyncio
-from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
-from urllib.request import url2pathname
 
-from okf_core import Storage
 from mcp.server.fastmcp import Context, FastMCP
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from okf_core import Storage, WorkspaceRegistry
+
 from okf_mcp import operations
 from okf_mcp.embeddings import EmbeddingConfig
+from okf_mcp.target import Target, resolve_target
 
 
 class Settings(BaseSettings):
@@ -21,80 +28,76 @@ class Settings(BaseSettings):
         env_prefix="OKF_", env_file=".env", extra="ignore"
     )
 
-    # Locations: a local path, or a ``scheme://`` URI for a registered storage
-    # backend (see ``okf_core.open_storage``). Kept as ``str`` so URIs survive.
-    bundle_root: str | None = None
-    store_root: str | None = None
+    # Default target (overridden per call by tool args or request headers).
+    workspace: str | None = None
+    bundle: str | None = None
 
     # Semantic search (``search`` tool). Only the tool needs these; leave unset to
     # keep it disabled. ``embedding_url`` is an OpenAI-compatible base URL
-    # including any ``/v1`` prefix. ``vector_db`` overrides the default sibling
-    # ``<bundle_root>.vectors.db`` file (required for non-local storage).
+    # including any ``/v1`` prefix. Vectors live in ``<workspace>/.okf/vectors.db``.
     embedding_url: str | None = None
     embedding_model: str | None = None
     embedding_api_key: str | None = None
     embedding_max_chars: int = 6000
-    vector_db: str | None = None
 
 
 settings = Settings()
 mcp = FastMCP("okf-producer")
 
+_TARGET_DOC = """
 
-def _uri_to_path(uri: object) -> Path | None:
-    """Convert a ``file://`` root URI to a local path; ``None`` if not a file URI."""
-    parsed = urlparse(str(uri))
-    if parsed.scheme != "file":
-        return None
-    path = url2pathname(parsed.path)
-    return Path(path) if path else None
+    `workspace`/`bundle` are optional: when omitted they come from the client's
+    defaults, or the user is asked. The result names the `workspace` and `bundle`
+    used; pass them explicitly on later calls."""
 
 
-async def _project_root(ctx: Context) -> Path:
-    """Discover the current project directory from the client's MCP roots.
-
-    Returns the first ``file://`` root the client advertises; falls back to the
-    process working directory when the client sends no usable roots or lacks the
-    ``roots`` capability.
-    """
-    try:
-        result = await ctx.session.list_roots()
-        roots = result.roots or []
-    except Exception:
-        roots = []
-    for root in roots:
-        path = _uri_to_path(root.uri)
-        if path is not None:
-            return path
-    return Path.cwd()
+def registry() -> WorkspaceRegistry:
+    """Workspaces under ``OKF_HOME`` (built per call so the env is honoured)."""
+    return WorkspaceRegistry()
 
 
-async def _root(bundle_root: str | None, ctx: Context) -> Path | Storage:
-    """Resolve the effective bundle root for a tool call.
+async def _target(
+    ctx: Context, workspace: str | None, bundle: str | None, *, need_bundle: bool = True
+) -> Target:
+    return await resolve_target(
+        ctx,
+        registry(),
+        workspace=workspace,
+        bundle=bundle,
+        need_bundle=need_bundle,
+        env_workspace=settings.workspace,
+        env_bundle=settings.bundle,
+    )
 
-    Precedence: an explicit ``bundle_root`` arg wins; otherwise store mode
-    (``OKF_STORE_ROOT``) partitions per project into ``<store_root>/<project-folder>``;
-    otherwise the legacy single bundle (``OKF_BUNDLE_ROOT``). Setting both env
-    roots (with no arg) is an error. Each is a local path or a ``scheme://``
-    storage location; local paths resolve to ``Path`` and others to ``Storage``.
-    """
-    if bundle_root:
-        return operations.resolve_bundle_root(bundle_root, None)
-    if settings.store_root and settings.bundle_root:
-        raise ValueError("set OKF_STORE_ROOT or OKF_BUNDLE_ROOT, not both")
-    if settings.store_root:
-        project = await _project_root(ctx)
-        return operations.resolve_store_bundle_root(settings.store_root, project)
-    return operations.resolve_bundle_root(None, settings.bundle_root)
+
+async def _bundle(
+    ctx: Context, workspace: str | None, bundle: str | None
+) -> tuple[Target, Storage]:
+    target = await _target(ctx, workspace, bundle)
+    return target, target.workspace.bundle_storage(target.bundle)
+
+
+def _echo(target: Target, result: Any) -> dict:
+    where = {"workspace": target.workspace.name, "bundle": target.bundle}
+    if isinstance(result, dict):
+        return {**result, **where}
+    return {**where, "items": result}
+
+
+def _with_target_doc(fn):
+    fn.__doc__ = (fn.__doc__ or "").rstrip() + _TARGET_DOC
+    return fn
 
 
 @mcp.tool()
+@_with_target_doc
 async def add(
     ctx: Context,
     concept_id: str,
     frontmatter: dict[str, Any],
     body: str,
-    bundle_root: str | None = None,
+    workspace: str | None = None,
+    bundle: str | None = None,
 ) -> dict:
     """Create a new OKF concept document.
 
@@ -104,18 +107,19 @@ async def add(
     omitted. Fails if the concept already exists. Regenerates indexes and
     appends a Creation entry to the directory's `_log.md`.
     """
-    return operations.add_concept(
-        await _root(bundle_root, ctx), concept_id, frontmatter, body
-    )
+    t, storage = await _bundle(ctx, workspace, bundle)
+    return _echo(t, operations.add_concept(storage, concept_id, frontmatter, body))
 
 
 @mcp.tool()
+@_with_target_doc
 async def patch(
     ctx: Context,
     concept_id: str,
     frontmatter: dict[str, Any] | None = None,
     body: str | None = None,
-    bundle_root: str | None = None,
+    workspace: str | None = None,
+    bundle: str | None = None,
 ) -> dict:
     """Update an existing OKF concept.
 
@@ -124,49 +128,64 @@ async def patch(
     refreshed unless you pass one. Fails if the concept does not exist.
     Regenerates indexes and appends an Update entry to `_log.md`.
     """
-    return operations.patch_concept(
-        await _root(bundle_root, ctx), concept_id, frontmatter, body
-    )
+    t, storage = await _bundle(ctx, workspace, bundle)
+    return _echo(t, operations.patch_concept(storage, concept_id, frontmatter, body))
 
 
 @mcp.tool()
-async def get(ctx: Context, concept_id: str, bundle_root: str | None = None) -> dict:
+@_with_target_doc
+async def get(
+    ctx: Context, concept_id: str, workspace: str | None = None, bundle: str | None = None
+) -> dict:
     """Read one concept: its frontmatter, body, and resolved outgoing links."""
-    return operations.get_concept(await _root(bundle_root, ctx), concept_id)
+    t, storage = await _bundle(ctx, workspace, bundle)
+    return _echo(t, operations.get_concept(storage, concept_id))
 
 
 @mcp.tool(name="list")
+@_with_target_doc
 async def list_(
     ctx: Context,
     type: str | None = None,
     prefix: str | None = None,
-    bundle_root: str | None = None,
-) -> list[dict]:
-    """List concepts, optionally filtered by exact `type` and/or id `prefix`."""
-    return operations.list_concepts(await _root(bundle_root, ctx), type, prefix)
+    workspace: str | None = None,
+    bundle: str | None = None,
+) -> dict:
+    """List concepts, optionally filtered by exact `type` and/or id `prefix`.
+
+    Returns `{workspace, bundle, items: [...]}`.
+    """
+    t, storage = await _bundle(ctx, workspace, bundle)
+    return _echo(t, operations.list_concepts(storage, type, prefix))
 
 
 @mcp.tool()
+@_with_target_doc
 async def read_index(
     ctx: Context,
     dir: str | None = None,
     depth: int = 1,
-    bundle_root: str | None = None,
-) -> list[dict]:
+    workspace: str | None = None,
+    bundle: str | None = None,
+) -> dict:
     """Read `_index.md` files for progressive disclosure.
 
     `dir` is a bundle-relative directory (root if omitted). `depth` (1-3) sets
-    how many directory levels of indexes to return, breadth-first.
+    how many directory levels of indexes to return, breadth-first. Returns
+    `{workspace, bundle, items: [...]}`.
     """
-    return operations.read_index(await _root(bundle_root, ctx), dir, depth)
+    t, storage = await _bundle(ctx, workspace, bundle)
+    return _echo(t, operations.read_index(storage, dir, depth))
 
 
 @mcp.tool()
+@_with_target_doc
 async def move(
     ctx: Context,
     from_concept_id: str,
     to_concept_id: str,
-    bundle_root: str | None = None,
+    workspace: str | None = None,
+    bundle: str | None = None,
 ) -> dict:
     """Move (rename or relocate) an OKF concept to a new id.
 
@@ -177,17 +196,18 @@ async def move(
     relative links stay valid, then regenerates indexes and appends a Move entry
     to `_log.md`.
     """
-    return operations.move_concept(
-        await _root(bundle_root, ctx), from_concept_id, to_concept_id
-    )
+    t, storage = await _bundle(ctx, workspace, bundle)
+    return _echo(t, operations.move_concept(storage, from_concept_id, to_concept_id))
 
 
 @mcp.tool()
+@_with_target_doc
 async def delete(
     ctx: Context,
     concept_id: str,
     force: bool = False,
-    bundle_root: str | None = None,
+    workspace: str | None = None,
+    bundle: str | None = None,
 ) -> dict:
     """Delete an OKF concept document.
 
@@ -198,11 +218,15 @@ async def delete(
     indexes, and appends a Deletion entry to `_log.md`. Irreversible. Fails if
     the concept does not exist.
     """
-    return operations.delete_concept(await _root(bundle_root, ctx), concept_id, force)
+    t, storage = await _bundle(ctx, workspace, bundle)
+    return _echo(t, operations.delete_concept(storage, concept_id, force))
 
 
 @mcp.tool()
-async def reindex(ctx: Context, bundle_root: str | None = None) -> dict:
+@_with_target_doc
+async def reindex(
+    ctx: Context, workspace: str | None = None, bundle: str | None = None
+) -> dict:
     """Regenerate every `_index.md` in the bundle from current content.
 
     Use this to repair indexes that have drifted -- for example after editing
@@ -210,15 +234,18 @@ async def reindex(ctx: Context, bundle_root: str | None = None) -> dict:
     directory `_index.md` files; does not touch `_log.md`. Returns the
     regenerated index paths (bundle-relative) and their count.
     """
-    return operations.reindex_bundle(await _root(bundle_root, ctx))
+    t, storage = await _bundle(ctx, workspace, bundle)
+    return _echo(t, operations.reindex_bundle(storage))
 
 
 @mcp.tool()
+@_with_target_doc
 async def describe(
     ctx: Context,
     dir: str,
     description: str,
-    bundle_root: str | None = None,
+    workspace: str | None = None,
+    bundle: str | None = None,
 ) -> dict:
     """Set or clear a directory's authored description.
 
@@ -228,7 +255,8 @@ async def describe(
     synthesized contents summary). `dir` is a bundle-relative directory that must
     already have an `_index.md`.
     """
-    return operations.describe_directory(await _root(bundle_root, ctx), dir, description)
+    t, storage = await _bundle(ctx, workspace, bundle)
+    return _echo(t, operations.describe_directory(storage, dir, description))
 
 
 @mcp.tool()
@@ -236,18 +264,24 @@ async def search(
     ctx: Context,
     query: str,
     top_k: int = 5,
+    bundles: list[str] | None = None,
     dir: str | None = None,
-    bundle_root: str | None = None,
-) -> list[dict]:
-    """Find the `_index.md` files closest in meaning to a natural-language `query`.
+    workspace: str | None = None,
+) -> dict:
+    """Find what is closest in meaning to a natural-language `query` across a workspace.
 
-    Semantic search over directory indexes, to locate the right area of the
-    bundle when you do not know where something lives. Returns up to `top_k`
-    (1-20) hits `{dir, path, score, excerpt}`, best first; `dir` limits results
-    to that bundle-relative directory and below. Then go deeper: call
-    `read_index` / `list` / `get` on a hit's `dir`. Only indexes are searched,
-    not concept bodies. Needs OKF_EMBEDDING_URL and OKF_EMBEDDING_MODEL; the
-    first search after changes embeds the changed indexes, so it can be slower.
+    Semantic search over every bundle's directory indexes (`_index.md`) and over
+    the bundles' own descriptions, to locate the right bundle and area when you
+    do not know where something lives. Searches every bundle of the workspace
+    unless `bundles` lists some (or a default bundle is configured). Returns
+    `{workspace, bundles, hits}`; hits are `{bundle, kind, dir, path, score,
+    excerpt}`, best first, up to `top_k` (1-20) in total. `kind` is `index` for
+    an `_index.md` hit and `bundle` for a bundle-description hit (`path` null).
+    `dir` narrows to a subdirectory and needs exactly one bundle. Then go deeper:
+    `read_index` / `list` / `get` with that hit's `bundle` and `dir`. Concept
+    bodies are not searched. Needs OKF_EMBEDDING_URL and OKF_EMBEDDING_MODEL; the
+    first search after changes embeds what changed, so it can be slower.
+    `workspace` is optional (defaults, else the user is asked).
     """
     config = (
         EmbeddingConfig(
@@ -258,21 +292,92 @@ async def search(
         if settings.embedding_url and settings.embedding_model
         else None
     )
-    root = await _root(bundle_root, ctx)
-    return await asyncio.to_thread(
-        operations.search_indexes,
-        root,
+    target = await _target(ctx, workspace, None, need_bundle=False)
+    ws = target.workspace
+    scope = bundles if bundles is not None else (
+        [target.bundle] if target.bundle else ws.indexes()
+    )
+    hits = await asyncio.to_thread(
+        operations.search_workspace,
+        ws,
         query,
         top_k,
+        scope,
         dir,
         config=config,
         max_chars=settings.embedding_max_chars,
-        db_path=settings.vector_db,
     )
+    return {"workspace": ws.name, "bundles": scope, "hits": hits}
 
 
-def main() -> None:
-    mcp.run()
+@mcp.tool()
+async def list_workspaces() -> list[dict]:
+    """List the OKF workspaces as `[{name, bundles}]` (`bundles` = how many).
+
+    Workspaces are created by a person, not over MCP. Use `list_bundles` to see
+    what each bundle in a workspace is for.
+    """
+    return [{"name": w.name, "bundles": len(w.indexes())} for w in registry().list()]
+
+
+@mcp.tool()
+async def list_bundles(ctx: Context, workspace: str | None = None) -> dict:
+    """List a workspace's bundles with what each is for.
+
+    Returns `{workspace, bundles: [{name, description}]}`; `description` is null
+    when none was set (see `describe_bundle`). Pick the bundle whose description
+    fits, then pass it as `bundle` to other tools. `workspace` is optional
+    (defaults, else the user is asked).
+    """
+    target = await _target(ctx, workspace, None, need_bundle=False)
+    return {"workspace": target.workspace.name, "bundles": target.workspace.bundles_info()}
+
+
+@mcp.tool()
+async def create_bundle(
+    ctx: Context, name: str, description: str | None = None, workspace: str | None = None
+) -> dict:
+    """Create a new, empty bundle `name` in a workspace, with an optional description.
+
+    The `description` (max 1000 chars) says what the bundle is for, so agents
+    can choose it later. Fails if the bundle exists. Names start with a letter
+    or digit and use only letters, digits, `.`, `_`, `-`. Returns `{workspace,
+    bundle, description}`. `workspace` is optional (defaults, else the user is
+    asked). Workspaces themselves cannot be created here.
+    """
+    target = await _target(ctx, workspace, None, need_bundle=False)
+    result = operations.create_bundle(target.workspace, name, description)
+    return {"workspace": target.workspace.name, **result}
+
+
+@mcp.tool()
+@_with_target_doc
+async def describe_bundle(
+    ctx: Context,
+    description: str | None,
+    bundle: str | None = None,
+    workspace: str | None = None,
+) -> dict:
+    """Set or clear what a bundle is for (its description, max 1000 chars).
+
+    Pass null or an empty string to clear it. Returns `{workspace, bundle,
+    description}`. This is the bundle-level description shown by `list_bundles`
+    and matched by `search`; for a directory inside a bundle use `describe`.
+    """
+    target = await _target(ctx, workspace, bundle)
+    stored = target.workspace.set_description(target.bundle, description)
+    return {"workspace": target.workspace.name, "bundle": target.bundle, "description": stored}
+
+
+def main(argv: list[str] | None = None) -> None:
+    p = argparse.ArgumentParser(prog="okf-mcp", description="OKF producer MCP server")
+    p.add_argument("--transport", choices=["stdio", "streamable-http"], default="stdio")
+    p.add_argument("--host", default="127.0.0.1", help="HTTP bind address (no auth: keep it local)")
+    p.add_argument("--port", type=int, default=8000, help="HTTP port")
+    args = p.parse_args(argv)
+    mcp.settings.host = args.host
+    mcp.settings.port = args.port
+    mcp.run(transport=args.transport)
 
 
 if __name__ == "__main__":

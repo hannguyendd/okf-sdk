@@ -9,7 +9,7 @@ from okf_web.app import create_app
 def registry(tmp_path):
     reg = WorkspaceRegistry(tmp_path / "workspaces")
     ws = reg.create("work")
-    ws.create_index("notes")
+    ws.create_index("notes", "Meeting notes")
     ws.create_index("docs")
     reg.create("empty")
     return reg
@@ -22,14 +22,17 @@ def client(registry, **kw):
 def test_info_reports_workspace_mode(registry):
     info = client(registry).get("/api/info").json()
     assert info["mode"] == "workspace"
-    assert info["location"] == str(registry.root)
+    assert info["location"] == registry.storage.location
 
 
 def test_list_workspaces_with_indexes(registry):
     r = client(registry).get("/api/workspaces").json()
     assert r == [
         {"name": "empty", "indexes": []},
-        {"name": "work", "indexes": ["docs", "notes"]},
+        {"name": "work", "indexes": [
+            {"name": "docs", "description": None},
+            {"name": "notes", "description": "Meeting notes"},
+        ]},
     ]
 
 
@@ -38,10 +41,12 @@ def test_create_workspace_and_index(registry):
     assert c.post("/api/workspaces", json={"name": "new"}).status_code == 201
     assert c.post("/api/workspaces", json={"name": "new"}).status_code == 400  # exists
     assert c.post("/api/workspaces", json={"name": "../x"}).status_code == 400
-    assert c.post("/api/workspaces/new/indexes", json={"name": "mem"}).status_code == 201
+    r = c.post("/api/workspaces/new/indexes", json={"name": "mem", "description": "Memory"})
+    assert r.status_code == 201 and r.json() == {"name": "mem", "description": "Memory"}
     assert c.post("/api/workspaces/new/indexes", json={"name": "mem"}).status_code == 400
     assert c.post("/api/workspaces/nope/indexes", json={"name": "mem"}).status_code == 404
-    assert {"name": "new", "indexes": ["mem"]} in c.get("/api/workspaces").json()
+    assert c.post("/api/workspaces/new/indexes", json={"name": "big", "description": "x" * 1001}).status_code == 400
+    assert {"name": "new", "indexes": [{"name": "mem", "description": "Memory"}]} in c.get("/api/workspaces").json()
 
 
 def test_index_scoped_bundle_routes(registry):
@@ -68,17 +73,3 @@ def test_read_only_blocks_workspace_writes(registry):
     assert c.post("/api/workspaces/work/indexes", json={"name": "n"}).status_code == 403
     assert c.post("/api/workspaces/work/indexes/notes/reindex").status_code == 403
     assert c.get("/api/workspaces").status_code == 200
-
-
-def test_bundle_mode_has_no_workspaces(tmp_path):
-    from okf_core import MemoryStorage
-
-    c = TestClient(create_app(MemoryStorage()))
-    assert c.get("/api/info").json()["mode"] == "bundle"
-    assert c.get("/api/workspaces").status_code == 404
-    assert c.get("/api/tree").status_code == 200
-
-
-def test_requires_root_or_registry():
-    with pytest.raises(ValueError):
-        create_app()

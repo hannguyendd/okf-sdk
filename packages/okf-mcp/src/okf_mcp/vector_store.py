@@ -1,4 +1,5 @@
-"""sqlite-vec store holding one embedding per ``_index.md`` file of a bundle."""
+"""sqlite-vec store for a workspace: one embedding per ``_index.md`` file of each
+bundle, plus one per bundle description (the reserved key ``""``)."""
 
 from __future__ import annotations
 
@@ -8,11 +9,13 @@ import sqlite3
 from collections.abc import Callable
 from pathlib import Path
 
-from okf_core import INDEX_FILENAME, LocalStorage, OKFDocument, Storage
+from okf_core import INDEX_FILENAME, METADATA_DIR, OKFDocument, Storage, Workspace
 
 Embedder = Callable[[list[str]], list[list[float]]]
 
 _EXCERPT_CHARS = 200
+_DB_FILENAME = "vectors.db"
+_DESCRIPTION_KEY = ""  # real keys always end in ``_index.md``
 _BUSY_TIMEOUT_MS = 30_000
 
 
@@ -20,14 +23,14 @@ class VectorStoreError(RuntimeError):
     """The vector store could not be opened, synced, or queried."""
 
 
-def default_db_path(storage: Storage) -> Path:
-    """Sibling ``<bundle_root>.vectors.db`` -- outside the bundle, never inside it."""
-    if isinstance(storage, LocalStorage):
-        return Path(str(storage.root) + ".vectors.db")
-    raise VectorStoreError(
-        f"no default vector database location for storage {storage.location!r}; "
-        "set OKF_VECTOR_DB to a local file path"
-    )
+def workspace_db_path(workspace: Workspace) -> Path:
+    """``<workspace>/.okf/vectors.db`` -- inside the workspace, outside every bundle."""
+    if workspace.path is None:
+        raise VectorStoreError(
+            f"workspace {workspace.name!r} is not on local storage; "
+            "semantic search needs a local vector database"
+        )
+    return workspace.path / METADATA_DIR / _DB_FILENAME
 
 
 def _excerpt(text: str) -> str:
@@ -79,9 +82,19 @@ class VectorStore:
         self._conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)", (key, value))
 
     def sync(
-        self, storage: Storage, embed: Embedder, *, model: str, max_chars: int
-    ) -> None:
-        """Make the store match the bundle's ``_index.md`` files.
+        self,
+        storage: Storage,
+        embed: Embedder,
+        *,
+        bundle: str,
+        description: str | None,
+        model: str,
+        max_chars: int,
+    ) -> bool:
+        """Make the store's rows for ``bundle`` match its ``_index.md`` files and
+        its description (``None`` removes the description row). Returns whether
+        the whole store was rebuilt (model or dimension change), which empties
+        every *other* bundle's rows too.
 
         Embeds only files whose (truncated) text changed, prunes rows for files that
         no longer exist, and rebuilds everything when the model name or the vector
@@ -92,13 +105,16 @@ class VectorStore:
         """
         import sqlite_vec
 
-        root = storage.location
+        root = bundle
         keys = sorted(
             k
             for k in storage.iter_files(suffix=INDEX_FILENAME)
             if posixpath.basename(k) == INDEX_FILENAME
         )
         texts = {k: storage.read_text(k)[:max_chars] for k in keys}
+        if description:
+            keys.insert(0, _DESCRIPTION_KEY)
+            texts[_DESCRIPTION_KEY] = description[:max_chars]
         hashes = {k: hashlib.sha256(t.encode("utf-8")).hexdigest() for k, t in texts.items()}
 
         try:
@@ -112,7 +128,7 @@ class VectorStore:
             changed = [k for k in keys if existing.get(k) != hashes[k]]
             gone = set(existing) - set(keys)
             if not changed and not gone and not rebuild and stored_model == model:
-                return
+                return False
 
             vectors = self._embed(embed, [texts[k] for k in changed])
             if vectors and stored_dim is not None and not rebuild and len(vectors[0]) != int(stored_dim):
@@ -136,12 +152,19 @@ class VectorStore:
                     self._conn.execute(
                         "INSERT OR REPLACE INTO vectors(root, key, hash, embedding, excerpt)"
                         " VALUES(?, ?, ?, ?, ?)",
-                        (root, k, hashes[k], sqlite_vec.serialize_float32(v), _excerpt(texts[k])),
+                        (
+                            root,
+                            k,
+                            hashes[k],
+                            sqlite_vec.serialize_float32(v),
+                            texts[k] if k == _DESCRIPTION_KEY else _excerpt(texts[k]),
+                        ),
                     )
                 if vectors:
                     self._set_meta("dim", str(len(vectors[0])))
                 self._set_meta("model", model)
                 self._conn.execute("COMMIT")
+                return rebuild
             except BaseException:
                 if self._conn.in_transaction:
                     self._conn.execute("ROLLBACK")
@@ -161,23 +184,53 @@ class VectorStore:
             )
         return vectors
 
+    def prune_bundles(self, keep: set[str]) -> None:
+        """Delete every row of a bundle not in ``keep`` (e.g. deleted from disk)."""
+        try:
+            stored = {r[0] for r in self._conn.execute("SELECT DISTINCT root FROM vectors")}
+            gone = stored - keep
+            if not gone:
+                return
+            self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                self._conn.executemany("DELETE FROM vectors WHERE root=?", [(g,) for g in gone])
+                self._conn.execute("COMMIT")
+            except BaseException:
+                if self._conn.in_transaction:
+                    self._conn.execute("ROLLBACK")
+                raise
+        except sqlite3.OperationalError as exc:
+            raise VectorStoreError(f"vector database error (is it locked by another process?): {exc}") from exc
+
     def query(
-        self, storage: Storage, vector: list[float], top_k: int, dir: str = ""
+        self, vector: list[float], top_k: int, *, bundles: list[str], dir: str = ""
     ) -> list[dict]:
-        """Closest ``_index.md`` files to ``vector`` (cosine), best first."""
+        """Closest rows of ``bundles`` to ``vector`` (cosine), ranked together, best
+        first. A non-empty ``dir`` keeps only indexes at or below it."""
         import sqlite_vec
 
+        if not bundles:
+            return []
         prefix = f"{dir}/" if dir else ""
+        marks = ",".join("?" * len(bundles))
         try:
             rows = self._conn.execute(
-                "SELECT key, excerpt, 1 - vec_distance_cosine(embedding, ?) AS score"
-                " FROM vectors WHERE root=? AND substr(key, 1, ?) = ?"
-                " ORDER BY score DESC, key ASC LIMIT ?",
-                (sqlite_vec.serialize_float32(vector), storage.location, len(prefix), prefix, top_k),
+                "SELECT root, key, excerpt, 1 - vec_distance_cosine(embedding, ?) AS score"
+                f" FROM vectors WHERE root IN ({marks}) AND substr(key, 1, ?) = ?"
+                + (" AND key != ''" if dir else "")
+                + " ORDER BY score DESC, root ASC, key ASC LIMIT ?",
+                (sqlite_vec.serialize_float32(vector), *bundles, len(prefix), prefix, top_k),
             ).fetchall()
         except sqlite3.Error as exc:
             raise VectorStoreError(f"vector query failed: {exc}") from exc
         return [
-            {"dir": posixpath.dirname(key), "path": key, "score": float(score), "excerpt": excerpt}
-            for key, excerpt, score in rows
+            {
+                "bundle": root,
+                "kind": "bundle" if key == _DESCRIPTION_KEY else "index",
+                "dir": posixpath.dirname(key),
+                "path": None if key == _DESCRIPTION_KEY else key,
+                "score": float(score),
+                "excerpt": excerpt,
+            }
+            for root, key, excerpt, score in rows
         ]
