@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 of Open Knowledge Format tooling. The root `pyproject.toml` is a **virtual**
 workspace root (no `[project]` of its own); packages live under `packages/*`.
 
-The workspace has three members. **`packages/okf-core`** — a library for
+The workspace has four members. **`packages/okf-core`** — a library for
 reading, indexing, and validating OKF bundles (`OKFDocument`, `Bundle`,
 `regenerate_indexes`, `validate_bundle`). Its only runtime dependency is PyYAML.
 See `docs/superpowers/specs/2026-06-25-okf-core-indexing-library-design.md` for
@@ -59,6 +59,18 @@ folder, then `uv run okf-web` (serves the workspace registry under `$OKF_HOME`
 with a workspace/index picker; `--read-only`, binds 127.0.0.1, no auth). The UI
 shows and edits each index's description. Frontend tests: `bun test`. See
 `docs/superpowers/specs/2026-10-25-okf-web-ui-design.md`.
+
+**`packages/okf-claude`** — Claude Code integration (`okf-claude` CLI):
+`setup`/`uninstall` register the `okf` MCP server (`claude mcp add`, pinned via
+`OKF_WORKSPACE`/`OKF_BUNDLE`), write SessionStart/SessionEnd hooks into a Claude
+Code settings file (`--scope local|project|user`), and copy the `/okf-remember`
+and `/okf-recall` slash commands. SessionStart injects guidance plus recent
+**episodes**; SessionEnd spawns a detached `claude -p` summarizer that writes an
+`episodes/<date>-<session8>` concept (type `episode`). Hooks never fail a
+session — errors go to `<OKF_HOME>/logs/okf-claude.log`; `OKF_CLAUDE_CHILD=1`
+stops recursion. Prompts live in `src/okf_claude/prompts/`. Entry script:
+`scripts/setup-claude-code.sh`. See
+`docs/superpowers/specs/2026-11-13-okf-claude-code-integration-design.md`.
 
 **Storage.** All file access in both packages goes through the
 `okf_core.Storage` interface (`read_text`/`write_text`/`delete`/`move`/
