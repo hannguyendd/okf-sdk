@@ -38,6 +38,7 @@ at `/landing.html`. Add `?intro` to the app URL to replay the opening animation.
 | Toasts | sonner (unstyled, drawn as sticky notes) |
 | Doodle look | Tailwind v4, rough.js (`<Sketch>`, `<Btn>`), rough-notation (`<Mark>`) |
 | Markdown | react-markdown + remark-gfm (tables, strikethrough, task lists) |
+| Landing animation | motion (`motion/react`): scroll reveals, sticker pops, page-flip screenshots, scroll-progress snail; honours reduced motion |
 | Fonts | `@fontsource` Mali + Patrick Hand (Vietnamese included) |
 | Tests | Vitest + Testing Library + MSW (`src/test/fakeBackend.ts`) |
 
