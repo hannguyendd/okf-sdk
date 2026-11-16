@@ -1,0 +1,24 @@
+[project]
+name = "okf-claude"
+version = "0.1.0"
+description = "Claude Code integration for OKF: memory hooks, slash commands, and setup"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "okf-core",
+    "okf-mcp",
+]
+
+[project.scripts]
+okf-claude = "okf_claude.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/okf_claude"]
+
+[tool.uv.sources]
+okf-core = { workspace = true }
+okf-mcp = { workspace = true }

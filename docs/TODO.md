@@ -1,6 +1,6 @@
 # OKF To-Do
 
-Ideas captured for later review. Each needs a brainstorm and a spec before implementation. Status as of 2026-10-19.
+Ideas captured for later review. Each needs a brainstorm and a spec before implementation. Status as of 2026-11-13.
 
 ## 1. Git-managed bundles
 
@@ -27,7 +27,7 @@ Ideas captured for later review. Each needs a brainstorm and a spec before imple
 
 ## 4. Storage abstraction (filesystem as an interface)
 
-**Status:** Done — in review in PR #2 (storage interface with local and in-memory backends; all okf-core and okf-mcp callers use it). Distributed backends remain future work.
+**Status:** Done — merged in PR #2 (storage interface with local and in-memory backends; all okf-core and okf-mcp callers use it). Distributed backends remain future work.
 
 - Put the file system behind an interface so storage can later move to a distributed backend without changing callers.
 - Likely touches `okf-core` (`Bundle`, `OKFDocument`, `regenerate_indexes`, `validate_bundle`) and `okf-mcp` write tools, which read and write files directly today.
@@ -36,14 +36,14 @@ Ideas captured for later review. Each needs a brainstorm and a spec before imple
 
 ## 5. React web UI for querying and managing memories
 
-**Status:** Done — `packages/okf-web` (local-only, full management, semantic search). Follow-ups: workspace/index picker, auth before any hosting.
+**Status:** Done — `packages/okf-web` (local-only, full management, semantic search). Workspace/index picker merged in PR #6. Follow-up: auth before any hosting.
 
 - A React web app to query and view (and manage) the memories stored in OKF bundles.
 - Open questions: read-only viewer vs full management (add/patch/move/delete), how the UI reaches the data (new HTTP API over `okf-core`, or via `okf-mcp`), where it lives in the workspace (a new member under `packages/` or a separate frontend folder), how it relates to search (item 3) and the storage interface (item 4), and auth if it is ever hosted.
 
 ## 6. Claude Code integration: hooks and setup (episodic memory)
 
-**Status:** Not started.
+**Status:** Done — `packages/okf-claude` (SessionStart/SessionEnd hooks, `claude -p` episode summaries, `/okf-remember` and `/okf-recall`, `scripts/setup-claude-code.sh`). Not yet done: episode aging/decay, a PreCompact save, packaging as a Claude Code plugin.
 
 - Ship a setup for Claude Code (hooks, possibly packaged as a plugin or "mod") that wires OKF into sessions.
 - Episodic memory: at the end of a session, capture a summary of what happened as an episode concept, so later sessions start with context from history.
