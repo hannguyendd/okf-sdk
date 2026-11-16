@@ -139,7 +139,7 @@ function NotebookCard({ ws, index, overview, tilt }: { ws: string; index: IndexI
             <p className="h-8 font-head text-sm leading-8">
               {overview.concepts} concept{overview.concepts === 1 ? "" : "s"} · {overview.directories} folder{overview.directories === 1 ? "" : "s"}
             </p>
-            <p className="flex h-8 items-center gap-1.5 overflow-hidden">{types.map(([t, n]) => <Pill key={t}>{t} ×{n}</Pill>)}</p>
+            <p className="flex h-8 items-center gap-2.5 overflow-hidden">{types.map(([t, n]) => <Pill key={t} count={n}>{t}</Pill>)}</p>
             {overview.recent.length > 0 ? (
               <ul className="m-0 h-24 list-none p-0">
                 {overview.recent.slice(0, 3).map((r) => (

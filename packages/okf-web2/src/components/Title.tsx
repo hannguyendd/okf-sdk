@@ -12,6 +12,7 @@ export function Title({ children }: { children: ReactNode }) {
   );
 }
 
-export function Pill({ children }: { children: ReactNode }) {
-  return <span className="pill">{children}</span>;
+/** A word swiped with a highlighter; `count` trails it in small pencil. */
+export function Pill({ children, count }: { children: ReactNode; count?: number }) {
+  return <span className="pill">{children}{count !== undefined && <span className="pill-count">{count}</span>}</span>;
 }
