@@ -113,3 +113,28 @@ def test_list_dirs_and_backlinks(registry):
     assert c.get(f"{base}/dirs").json() == {"dirs": ["a", "a/deeper", "b"]}
     assert c.get(f"{base}/concepts/b/y").json()["linked_from"] == ["a/x"]
     assert c.get(f"{base}/concepts/a/x").json()["linked_from"] == []
+
+
+def test_hidden_entries_are_not_listed(registry):
+    ws = registry.get("work")
+    ws.set_color("pink")
+    ws.storage.write_text(".okf/vectors.db", "x")
+    ws.storage.write_text(".okf/stray.md", "---\ntype: Note\n---\nx")
+    ws.storage.write_text(".git/_index.md", "# hidden")
+    ws.storage.write_text("a/.cache/c.md", "---\ntype: Note\n---\nx")
+    ws.storage.write_text("a/.hid.md", "---\ntype: Note\n---\nx")
+    c = client(registry)
+    c.post(f"{BASE}/concepts", json={"concept_id": "a/x", "frontmatter": {"type": "Note"}, "body": "x"})
+    assert ".okf" not in ws.storage.read_text("_index.md")
+    root = c.get(f"{BASE}/tree").json()
+    assert [d["name"] for d in root["directories"]] == ["a"]
+    a = c.get(f"{BASE}/tree", params={"dir": "a"}).json()
+    assert a["directories"] == [] and [x["id"] for x in a["concepts"]] == ["a/x"]
+    assert c.get(f"{BASE}/tree", params={"dir": ".okf"}).status_code == 404
+    assert c.get(f"{BASE}/dirs").json() == {"dirs": ["a"]}
+    o = c.get(f"{BASE}/overview").json()
+    assert o["concepts"] == 1 and o["directories"] == 1
+    assert [x["id"] for x in c.get(f"{BASE}/concepts").json()] == ["a/x"]
+    dirs = [r["dir"] for r in c.get(f"{BASE}/index", params={"depth": 3}).json()]
+    assert dirs == ["", "a"]
+    assert c.get(f"{BASE}/index", params={"dir": ".git"}).json() == []

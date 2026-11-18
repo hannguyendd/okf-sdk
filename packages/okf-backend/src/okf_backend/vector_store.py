@@ -9,6 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from okf_core import INDEX_FILENAME, METADATA_DIR, OKFDocument, Storage, Workspace
+from okf_core.paths import iter_visible_files
 
 Embedder = Callable[[list[str]], list[list[float]]]
 
@@ -102,7 +103,7 @@ class VectorStore:
 
         keys = sorted(
             k
-            for k in storage.iter_files(suffix=INDEX_FILENAME)
+            for k in iter_visible_files(storage, suffix=INDEX_FILENAME)
             if posixpath.basename(k) == INDEX_FILENAME
         )
         texts = {k: storage.read_text(k)[:max_chars] for k in keys}

@@ -154,6 +154,36 @@ def test_create_writes_v2_marker(tmp_path: Path):
     assert ws.color() is None
 
 
+_CONCEPT = "---\ntype: note\ntitle: T\n---\nhi\n"
+
+
+def _hidden_workspace(tmp_path: Path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    ws.set_color("pink")
+    ws.storage.write_text(".okf/vectors.db", "x")
+    ws.storage.write_text(".okf/stray.md", "not a concept")
+    ws.storage.write_text(".git/notes.md", "not a concept")
+    ws.storage.write_text("notes/.cache/c.md", "not a concept")
+    ws.storage.write_text("notes/a.md", _CONCEPT)
+    return ws
+
+
+def test_root_index_never_lists_hidden_dirs(tmp_path: Path):
+    ws = _hidden_workspace(tmp_path)
+    written = regenerate_indexes(ws.storage)
+    assert sorted(written) == ["_index.md", "notes/_index.md"]
+    root = ws.storage.read_text("_index.md")
+    assert ".okf" not in root and ".git" not in root
+    assert ".cache" not in ws.storage.read_text("notes/_index.md")
+
+
+def test_hidden_md_not_loaded_or_validated(tmp_path: Path):
+    ws = _hidden_workspace(tmp_path)
+    assert [c.id for c in ws.load().concepts] == ["notes/a"]
+    regenerate_indexes(ws.storage)
+    assert validate_bundle(ws.path) == []
+
+
 def test_create_writes_v2_marker_on_memory_storage():
     ws = WorkspaceRegistry(root=MemoryStorage()).create("w")
     assert json.loads(ws.storage.read_text(".okf/workspace.json")) == {"version": 2}

@@ -20,6 +20,7 @@ from okf_core import (
     Storage,
     Workspace,
     extract_link_ids,
+    is_hidden,
     open_storage,
     parse_concept_id,
     regenerate_indexes,
@@ -253,7 +254,7 @@ def read_index(
     storage = open_storage(bundle_root)
     start = _clean_dir(dir)
     results: list[dict] = []
-    level = [start]
+    level = [] if is_hidden(start) else [start]
     for _ in range(depth):
         nxt: list[str] = []
         for d in level:
@@ -270,7 +271,7 @@ def read_index(
                 nxt.extend(
                     posixpath.join(d, e.name)
                     for e in storage.list_dir(d)
-                    if e.is_dir
+                    if e.is_dir and not is_hidden(e.name)
                 )
         level = nxt
         if not level:

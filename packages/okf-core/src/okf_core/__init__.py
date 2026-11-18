@@ -26,6 +26,8 @@ from okf_core.links import (
 )
 from okf_core.paths import (
     concept_id_to_path,
+    is_hidden,
+    iter_visible_files,
     parse_concept_id,
     path_to_concept_id,
 )
@@ -70,6 +72,8 @@ __all__ = [
     "OKFDocumentError",
     "REQUIRED_FRONTMATTER_KEYS",
     "concept_id_to_path",
+    "is_hidden",
+    "iter_visible_files",
     "parse_concept_id",
     "path_to_concept_id",
     "regenerate_indexes",

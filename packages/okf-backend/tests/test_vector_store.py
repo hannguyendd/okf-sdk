@@ -96,6 +96,15 @@ def test_sync_ignores_files_not_named_index_md(tmp_path):
     assert emb.embedded == ["alpha root"]
 
 
+def test_sync_ignores_hidden_index_files(tmp_path):
+    s = _bundle(_index_md="alpha root")
+    s.write_text(".okf/_index.md", "beta hidden")
+    s.write_text(".git/sub/_index.md", "gamma hidden")
+    emb = FakeEmbedder()
+    _store(tmp_path).sync(s, emb, model="m", max_chars=1000)
+    assert emb.embedded == ["alpha root"]
+
+
 def test_text_truncated_to_max_chars(tmp_path):
     s = _bundle(_index_md="alpha 1234567890")
     store, emb = _store(tmp_path), FakeEmbedder()

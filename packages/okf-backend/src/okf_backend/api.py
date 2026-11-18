@@ -20,6 +20,8 @@ from okf_core import (
     Storage,
     WorkspaceRegistry,
 )
+from okf_core.paths import is_hidden
+
 from okf_backend import operations
 
 
@@ -30,7 +32,7 @@ class _Forbidden(Exception):
 def _tree(storage: Storage, dir: str | None) -> dict:
     """One directory level: authored description, child directories, concepts."""
     key = operations._clean_dir(dir)
-    if not storage.is_dir(key):
+    if is_hidden(key) or not storage.is_dir(key):
         raise ValueError(f"directory not found: {key or '/'}")
 
     def description(d: str) -> str | None:
@@ -41,10 +43,11 @@ def _tree(storage: Storage, dir: str | None) -> dict:
 
     directories, concepts = [], []
     for e in sorted(storage.list_dir(key), key=lambda e: e.name):
+        if is_hidden(e.name):
+            continue
         child = posixpath.join(key, e.name)
         if e.is_dir:
-            if not e.name.startswith("."):
-                directories.append({"name": e.name, "dir": child, "description": description(child)})
+            directories.append({"name": e.name, "dir": child, "description": description(child)})
         elif e.name.endswith(".md") and e.name.removesuffix(".md") not in RESERVED_STEMS:
             fm = OKFDocument.parse(storage.read_text(child)).frontmatter
             concepts.append(
@@ -93,7 +96,7 @@ def _concept_with_backlinks(storage: Storage, concept_id: str) -> dict:
 def _all_dirs(storage: Storage, key: str = "") -> list[str]:
     out: list[str] = []
     for e in storage.list_dir(key):
-        if e.is_dir and not e.name.startswith("."):
+        if e.is_dir and not is_hidden(e.name):
             child = posixpath.join(key, e.name)
             out.append(child)
             out.extend(_all_dirs(storage, child))
