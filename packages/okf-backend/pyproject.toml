@@ -13,6 +13,9 @@ dependencies = [
     "uvicorn>=0.30",
 ]
 
+[project.scripts]
+okf-backend = "okf_backend.server:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

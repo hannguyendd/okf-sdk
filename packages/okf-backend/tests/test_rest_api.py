@@ -5,7 +5,7 @@ from starlette.testclient import TestClient
 
 from okf_core import MemoryStorage, WorkspaceRegistry
 from okf_backend import operations as ops
-from okf_web.app import create_app
+from okf_backend.api import create_app
 
 BASE = "/api/workspaces/w/indexes/b"
 
@@ -139,7 +139,7 @@ def test_search_unconfigured_is_400(storage):
 
 
 def test_search_uses_embedder(storage, monkeypatch):
-    from okf_web import app as app_mod
+    from okf_backend import api as app_mod
 
     seen = {}
 

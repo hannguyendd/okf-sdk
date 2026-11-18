@@ -2,7 +2,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from okf_core import WorkspaceRegistry
-from okf_web.app import create_app
+from okf_backend.api import create_app
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 import pytest
 from starlette.testclient import TestClient
 
-from okf_web.server import build_app, parse_args
+from okf_backend.server import build_app, parse_args
 
 
 @pytest.fixture
@@ -39,13 +39,19 @@ def test_root_mode_flags_are_gone():
 def test_static_flag_serves_another_frontend(home, tmp_path):
     dist = tmp_path / "dist"
     dist.mkdir()
-    (dist / "index.html").write_text("<p>okf-web2</p>")
+    (dist / "index.html").write_text("<p>frontend</p>")
     c = TestClient(build_app(parse_args(["--static", str(dist)])))
-    assert c.get("/").text == "<p>okf-web2</p>"
-    assert c.get("/w/x/y").text == "<p>okf-web2</p>"  # SPA fallback
+    assert c.get("/").text == "<p>frontend</p>"
+    assert c.get("/w/x/y").text == "<p>frontend</p>"  # SPA fallback
     assert c.get("/api/info").json()["mode"] == "workspace"
 
 
 def test_static_flag_requires_a_build(home, tmp_path):
     with pytest.raises(SystemExit, match="no index.html"):
         build_app(parse_args(["--static", str(tmp_path / "missing")]))
+
+
+def test_no_static_serves_api_only(tmp_path, monkeypatch):
+    monkeypatch.setenv("OKF_HOME", str(tmp_path))
+    app = build_app(parse_args([]))
+    assert not any(getattr(r, "path", "") == "/{path:path}" for r in app.routes)

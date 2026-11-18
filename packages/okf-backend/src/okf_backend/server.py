@@ -1,4 +1,4 @@
-"""CLI entry point: ``okf-web`` serves the API and built frontend on localhost."""
+"""CLI entry point: ``okf-backend`` serves the REST API (and an optional built frontend) on localhost."""
 
 from __future__ import annotations
 
@@ -6,15 +6,13 @@ import argparse
 from pathlib import Path
 
 from okf_core import WorkspaceRegistry
+
+from okf_backend.api import create_app
 from okf_backend.settings import BackendSettings
-
-from okf_web.app import create_app
-
-STATIC_DIR = Path(__file__).parent / "static"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(prog="okf-web", description=__doc__)
+    p = argparse.ArgumentParser(prog="okf-backend", description=__doc__)
     p.add_argument("--read-only", action="store_true", help="disable all write endpoints")
     p.add_argument("--host", default="127.0.0.1", help="bind address (no auth: keep it local)")
     p.add_argument("--port", type=int, default=8765)
@@ -22,7 +20,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--static",
         type=Path,
         metavar="DIR",
-        help="serve this built frontend instead of the bundled one (e.g. packages/okf-web2/dist)",
+        help="serve this built frontend (e.g. packages/okf-web/dist); omit to serve the API only",
     )
     return p.parse_args(argv)
 
@@ -30,9 +28,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def _static_dir(override: Path | None) -> Path | None:
     if override is not None:
         if not (override / "index.html").is_file():
-            raise SystemExit(f"okf-web: --static {override}: no index.html (build the frontend first)")
+            raise SystemExit(f"okf-backend: --static {override}: no index.html (build the frontend first)")
         return override
-    return STATIC_DIR if (STATIC_DIR / "index.html").is_file() else None
+    return None
 
 
 def build_app(args: argparse.Namespace):
