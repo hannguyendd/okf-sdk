@@ -9,7 +9,7 @@ import { ErrorNote } from "../doodle/Loading";
 import { PageSkeleton } from "../doodle/Skeleton";
 import { Sketch } from "../doodle/Sketch";
 import { api } from "../lib/api";
-import { useConcept, useDirs, useIndexMutation, useReadOnly } from "../lib/queries";
+import { useConcept, useDirs, useScopeMutation, useReadOnly } from "../lib/queries";
 import { parentDir, to } from "../lib/scope";
 import { ago, formatDate } from "../lib/time";
 
@@ -39,8 +39,8 @@ export function ConceptPage({ id }: { id: string }) {
   const dirs = useDirs(!readOnly);
   const dialogs = useDialogs();
   const [, navigate] = useLocation();
-  const move = useIndexMutation((s, dest: string) => api.move(s, id, dest), () => "Moved it. Links are fixed, you’re welcome.");
-  const remove = useIndexMutation(
+  const move = useScopeMutation((s, dest: string) => api.move(s, id, dest), () => "Moved it. Links are fixed, you’re welcome.");
+  const remove = useScopeMutation(
     (s, force: boolean) => api.remove(s, id, force),
     (r) => (r.action === "blocked" ? null : "Erased. I’ll pretend I never knew."),
   );

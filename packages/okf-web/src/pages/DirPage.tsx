@@ -1,3 +1,4 @@
+import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { Crumbs } from "../components/Crumbs";
 import { useDialogs } from "../components/Dialogs";
@@ -7,17 +8,18 @@ import { ErrorNote } from "../doodle/Loading";
 import { Okie } from "../doodle/Okie";
 import { PageSkeleton } from "../doodle/Skeleton";
 import { api } from "../lib/api";
-import { useIndexMutation, useReadOnly, useTree } from "../lib/queries";
+import { useScopeMutation, useReadOnly, useTree } from "../lib/queries";
 import { parentDir, to, useScope } from "../lib/scope";
 
-export function DirPage({ dir }: { dir: string }) {
+/** One directory: its description, actions, sub-folders and concepts. `children` go under the actions. */
+export function DirPage({ dir, children }: { dir: string; children?: ReactNode }) {
   const scope = useScope();
   const { data, error } = useTree(dir);
   const readOnly = useReadOnly();
   const dialogs = useDialogs();
   const [, navigate] = useLocation();
-  const describe = useIndexMutation((s, text: string) => api.describeDir(s, dir, text), () => "Noted.");
-  const mkdir = useIndexMutation((s, v: { name: string; description: string }) =>
+  const describe = useScopeMutation((s, text: string) => api.describeDir(s, dir, text), () => "Noted.");
+  const mkdir = useScopeMutation((s, v: { name: string; description: string }) =>
     api.createDir(s, dir ? `${dir}/${v.name.trim()}` : v.name.trim(), v.description), () => "Folder’s ready. Fill it whenever.");
 
   if (error) return <ErrorNote error={error} />;
@@ -47,7 +49,7 @@ export function DirPage({ dir }: { dir: string }) {
   return (
     <article>
       {dir && <Crumbs dir={parentDir(dir)} />}
-      <Title>{dir ? dir.split("/").pop() : scope.index}</Title>
+      <Title>{dir ? dir.split("/").pop() : scope.ws}</Title>
       {!dir && <p className="-mt-1 mb-1"><Pill>front page</Pill></p>}
       <p className="text-ink/70">{data.description ?? "No authored description."}</p>
       {(describe.error ?? mkdir.error) && <ErrorNote error={describe.error ?? mkdir.error} />}
@@ -58,6 +60,7 @@ export function DirPage({ dir }: { dir: string }) {
           {dir !== "" && <Btn tone="pink" tilt={-0.6} onClick={editDescription}>Edit description</Btn>}
         </div>
       )}
+      {children}
       {data.directories.length + data.concepts.length === 0 && (
         <div className="my-8 flex flex-wrap items-center gap-6">
           <Okie pose="shrug" size={170} />

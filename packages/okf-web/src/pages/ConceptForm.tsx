@@ -6,8 +6,8 @@ import { Btn } from "../doodle/Btn";
 import { ErrorNote } from "../doodle/Loading";
 import { PageSkeleton } from "../doodle/Skeleton";
 import { api, Concept } from "../lib/api";
-import { useConcept, useIndexMutation, useOverview } from "../lib/queries";
-import { parentDir, to, useScope } from "../lib/scope";
+import { useConcept, useScopeMutation, useOverview } from "../lib/queries";
+import { parentDir, to } from "../lib/scope";
 
 type Props = { mode: "new"; dir: string } | { mode: "edit"; id: string };
 
@@ -42,9 +42,9 @@ function EditLoader({ id }: { id: string }) {
 
 function Form(props: Props & { concept?: Concept }) {
   const [, navigate] = useLocation();
-  const types = Object.keys(useOverview(useScope()).data?.types ?? {});
+  const types = Object.keys(useOverview().data?.types ?? {});
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<Fields>({ defaultValues: toFields(props.concept) });
-  const save = useIndexMutation(async (s, f: Fields) => {
+  const save = useScopeMutation(async (s, f: Fields) => {
     // keep producer-defined keys the form doesn't show; the server manages `timestamp`
     const extra = Object.fromEntries(Object.entries(props.concept?.frontmatter ?? {}).filter(([k]) => !KNOWN.includes(k)));
     const fm: Record<string, unknown> = { ...extra, type: f.type };

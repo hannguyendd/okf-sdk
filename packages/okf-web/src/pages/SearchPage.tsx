@@ -13,7 +13,7 @@ export function SearchPage({ q }: { q: string }) {
   return (
     <article>
       <Title>Search: {q}</Title>
-      <p className="text-ink/70">Semantic match over directory listings (<code>_index.md</code>) and the index description.</p>
+      <p className="text-ink/70">Semantic match over every directory listing (<code>_index.md</code>) in this workspace.</p>
       {enabled === false ? (
         <div className="my-6 flex flex-wrap items-center gap-6">
           <Okie pose="asleep" size={180} />
@@ -27,10 +27,8 @@ export function SearchPage({ q }: { q: string }) {
       ) : (
         <ul className="m-0 flex list-none flex-col gap-4 p-0">
           {hits.map((h) => (
-            <li key={`${h.bundle}:${h.path ?? ""}`}>
-              {h.kind === "bundle"
-                ? <Link href={to.dir("")}><Pill>index</Pill> {h.bundle}</Link>
-                : <Link href={to.dir(h.dir)}>{h.dir || "front page"}</Link>}{" "}
+            <li key={h.path}>
+              <Link href={to.dir(h.dir)}>{h.dir || "front page"}</Link>{" "}
               <Pill>{h.score.toFixed(2)}</Pill>
               <Sketch className="mt-1 rotate-[-0.4deg] bg-note px-4 py-2" rough={{ strokeWidth: 1.6 }}>
                 <pre className="m-0 font-hand text-base whitespace-pre-wrap">{h.excerpt}</pre>

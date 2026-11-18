@@ -10,16 +10,15 @@ import { Logo } from "./components/Logo";
 import { Doodles } from "./doodle/Doodles";
 import { Okie } from "./doodle/Okie";
 import { ScopeProvider, param } from "./lib/scope";
-import { IndexLayout } from "./pages/IndexLayout";
-import { WorkspacePage } from "./pages/WorkspacePage";
+import { WorkspaceLayout } from "./pages/WorkspaceLayout";
 import { WorkspacesPage } from "./pages/WorkspacesPage";
 
 /**
  * Routes (hash-based, so the API server only has to serve index.html):
  *   #/                         workspaces
- *   #/w/:ws                    one workspace: its notebooks and recent concepts
- *   #/w/:ws/:index/            index root      …/d/<dir>   directory
- *   …/c/<id> concept   …/e/<id> edit   …/n/<dir> new concept   …/s/<q> search
+ *   #/w/:ws/                   workspace root: overview, recent concepts, root folder
+ *   …/d/<dir> directory   …/c/<id> concept   …/e/<id> edit   …/n/<dir> new concept
+ *   …/search/<q> search
  */
 /** Animate route changes as a page turn where View Transitions are supported. */
 const pageTurn: AroundNavHandler = (navigate, to, opts) => {
@@ -38,11 +37,10 @@ export function App({ client }: { client?: QueryClient }) {
         <Router hook={useHashLocation} aroundNav={pageTurn}>
           <Switch>
             <Route path="/"><WorkspacesPage /></Route>
-            <Route path="/w/:ws">{(p) => <WorkspacePage key={p.ws} ws={param(p.ws)} />}</Route>
-            <Route path="/w/:ws/:index" nest>
+            <Route path="/w/:ws" nest>
               {(p) => {
-                const scope = { ws: param(p.ws), index: param(p.index) };
-                return <ScopeProvider key={`${scope.ws}/${scope.index}`} scope={scope}><IndexLayout /></ScopeProvider>;
+                const scope = { ws: param(p.ws) };
+                return <ScopeProvider key={scope.ws} scope={scope}><WorkspaceLayout /></ScopeProvider>;
               }}
             </Route>
             <Route>

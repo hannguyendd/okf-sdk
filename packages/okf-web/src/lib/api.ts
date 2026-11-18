@@ -1,16 +1,15 @@
 /** Typed client for the okf-backend HTTP API (`packages/okf-backend/src/okf_backend/api.py`). */
 
 export interface Info { mode: "workspace"; location: string; read_only: boolean; search_enabled: boolean }
-export interface IndexInfo { name: string; description: string | null }
 /** Crayon colours a workspace can be tagged with (okf_core.WORKSPACE_COLORS). */
 export type WorkspaceColor = "yellow" | "pink" | "green" | "blue" | "red" | "orange" | "purple";
-export interface WorkspaceInfo { name: string; color: WorkspaceColor | null; indexes: IndexInfo[] }
+export interface WorkspaceInfo { name: string; color: WorkspaceColor | null }
 export interface DirEntry { name: string; dir: string; description: string | null }
 export interface ConceptMeta { id: string; type: string | null; title: string | null; description: string | null; tags: string[] }
 export interface Tree { dir: string; description: string | null; directories: DirEntry[]; concepts: ConceptMeta[] }
 export interface Concept { id: string; frontmatter: Record<string, unknown>; body: string; links_to: string[]; linked_from?: string[] }
-export interface Hit { bundle: string; kind: "index" | "bundle"; dir: string; path: string | null; score: number; excerpt: string }
-export interface BundleInfo { workspace: string; bundle: string; description: string | null }
+/** A search hit: one directory listing (`_index.md`) that matched. */
+export interface Hit { kind: "index"; dir: string; path: string; score: number; excerpt: string }
 export interface DeleteResult { action: string; referenced_by?: string[] }
 export interface Overview {
   concepts: number;
@@ -19,8 +18,8 @@ export interface Overview {
   recent: { id: string; title: string | null; type: string | null; timestamp: string | null }[];
 }
 
-/** The index (bundle) inside a workspace that a request targets. */
-export interface Scope { ws: string; index: string }
+/** The workspace a request targets. */
+export interface Scope { ws: string }
 
 export class ApiError extends Error {}
 
@@ -37,7 +36,7 @@ async function call<T>(method: string, url: string, body?: unknown): Promise<T> 
 
 const seg = encodeURIComponent;
 const path = (id: string) => id.split("/").map(seg).join("/");
-const base = (s: Scope) => `/api/workspaces/${seg(s.ws)}/indexes/${seg(s.index)}`;
+const base = (s: Scope) => `/api/workspaces/${seg(s.ws)}`;
 
 export const api = {
   info: () => call<Info>("GET", "/api/info"),
@@ -45,12 +44,7 @@ export const api = {
   createWorkspace: (name: string) => call<WorkspaceInfo>("POST", "/api/workspaces", { name }),
   setWorkspaceColor: (ws: string, color: WorkspaceColor | null) =>
     call<{ name: string; color: WorkspaceColor | null }>("POST", `/api/workspaces/${seg(ws)}/color`, { color }),
-  createIndex: (ws: string, name: string, description?: string) =>
-    call<IndexInfo>("POST", `/api/workspaces/${seg(ws)}/indexes`, { name, description: description || undefined }),
 
-  bundle: (s: Scope) => call<BundleInfo>("GET", `${base(s)}/bundle`),
-  describeBundle: (s: Scope, description: string | null) =>
-    call<BundleInfo>("POST", `${base(s)}/bundle/describe`, { description }),
   tree: (s: Scope, dir: string) => call<Tree>("GET", `${base(s)}/tree?dir=${seg(dir)}`),
   concept: (s: Scope, id: string) => call<Concept>("GET", `${base(s)}/concepts/${path(id)}`),
   add: (s: Scope, concept_id: string, frontmatter: Record<string, unknown>, body: string) =>
@@ -68,5 +62,7 @@ export const api = {
     call<{ dir: string }>("POST", `${base(s)}/dirs`, { dir, description }),
   overview: (s: Scope) => call<Overview>("GET", `${base(s)}/overview`),
   reindex: (s: Scope) => call<{ count: number }>("POST", `${base(s)}/reindex`),
-  search: (s: Scope, q: string) => call<Hit[]>("GET", `${base(s)}/search?q=${seg(q)}&top_k=10`),
+  /** Workspace-wide semantic search; `paths` narrows it to those directory subtrees. */
+  search: (s: Scope, q: string, paths: string[] = []) =>
+    call<Hit[]>("GET", `${base(s)}/search?q=${seg(q)}&top_k=10${paths.map((p) => `&paths=${seg(p)}`).join("")}`),
 };

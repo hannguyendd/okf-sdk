@@ -32,8 +32,8 @@ at `/landing.html`. Add `?intro` to the app URL to replay the opening animation.
 | Concern | Library |
 |---|---|
 | Build | Vite + React 19 + TypeScript |
-| Routing | wouter, hash-based (`#/w/<ws>/<index>/c/<id>`) |
-| Server state | TanStack Query (writes invalidate the whole index) |
+| Routing | wouter, hash-based (`#/w/<ws>/c/<id>`) |
+| Server state | TanStack Query (writes invalidate the whole workspace) |
 | Forms / dialogs | react-hook-form + Radix Dialog (`useDialogs().form/prompt/confirm`) |
 | Toasts | sonner (unstyled, drawn as sticky notes) |
 | Doodle look | Tailwind v4, rough.js (`<Sketch>`, `<Btn>`), rough-notation (`<Mark>`) |
@@ -46,8 +46,8 @@ at `/landing.html`. Add `?intro` to the app URL to replay the opening animation.
 
 ```
 src/
-  App.tsx              routes: #/ · #/w/:ws · #/w/:ws/:index/…
-  pages/               WorkspacesPage, WorkspacePage, IndexLayout, DirPage, ConceptPage, ConceptForm, SearchPage
+  App.tsx              routes: #/ · #/w/:ws/ · #/w/:ws/{d,c,e,n,search}/…
+  pages/               WorkspacesPage, WorkspaceLayout, WorkspacePage, DirPage, ConceptPage, ConceptForm, SearchPage
   components/          Tree (notebook explorer), Dialogs, ColorPicker, Logo, Title, Intro, ThemeToggle
   doodle/              Sketch, Btn, Mark, Skeleton, Loading, Okie, DoodleIcon, Doodles
   lib/                 api client, query hooks, scope + paths, workspace accent

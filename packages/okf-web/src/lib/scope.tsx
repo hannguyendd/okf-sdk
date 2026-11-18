@@ -7,10 +7,10 @@ export function ScopeProvider({ scope, children }: { scope: Scope; children: Rea
   return <ScopeContext.Provider value={scope}>{children}</ScopeContext.Provider>;
 }
 
-/** The workspace/index the current page is nested in. */
+/** The workspace the current page is nested in. */
 export function useScope(): Scope {
   const scope = useContext(ScopeContext);
-  if (!scope) throw new Error("useScope outside an index route");
+  if (!scope) throw new Error("useScope outside a workspace route");
   return scope;
 }
 
@@ -21,17 +21,16 @@ export const param = (v: string | undefined) => {
   try { return decodeURIComponent(v ?? ""); } catch { return v ?? ""; }
 };
 
-/** Absolute (hash) paths. Pages nested under an index use `to.*` relative paths. */
+/** Absolute (hash) path of a workspace. Pages nested under it use `to.*` relative paths. */
 export const workspacePath = (ws: string) => `/w/${encodeURIComponent(ws)}`;
-export const indexPath = (s: Scope) => `/w/${encodeURIComponent(s.ws)}/${encodeURIComponent(s.index)}`;
 
-/** Paths relative to the index route (`<Route path="/w/:ws/:index" nest>`). */
+/** Paths relative to the workspace route (`<Route path="/w/:ws" nest>`). */
 export const to = {
   dir: (dir: string) => (dir ? `/d/${enc(dir)}` : "/"),
   concept: (id: string) => `/c/${enc(id)}`,
   edit: (id: string) => `/e/${enc(id)}`,
   new: (dir: string) => `/n/${enc(dir)}`,
-  search: (q: string) => `/s/${encodeURIComponent(q)}`,
+  search: (q: string) => `/search/${encodeURIComponent(q)}`,
 };
 
 export const parentDir = (id: string) => (id.includes("/") ? id.slice(0, id.lastIndexOf("/")) : "");

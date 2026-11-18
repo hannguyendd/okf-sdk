@@ -7,12 +7,12 @@ import { TreeSkeleton } from "../doodle/Skeleton";
 import { crayon, scribble, Sketch } from "../doodle/Sketch";
 import { api, ConceptMeta, DirEntry } from "../lib/api";
 import { useAccent } from "../lib/accent";
-import { useIndexMutation, usePrefetch, useReadOnly, useTree } from "../lib/queries";
+import { useScopeMutation, usePrefetch, useReadOnly, useTree } from "../lib/queries";
 import { param, parentDir, to, useScope } from "../lib/scope";
 
 interface Active { kind: "dir" | "concept"; path: string }
 
-/** What the current (index-relative) location points at, for highlighting. */
+/** What the current (workspace-relative) location points at, for highlighting. */
 function useActive(): Active | null {
   const [loc] = useLocation();
   const m = loc.match(/^\/([cedn])\/(.*)$/);
@@ -135,7 +135,7 @@ function Children({ dir, ctx }: { dir: string; ctx: Ctx }) {
   );
 }
 
-const storeKey = (ws: string, index: string) => `okf-tree:${ws}/${index}`;
+const storeKey = (ws: string) => `okf-tree:${ws}`;
 const loadOpen = (k: string): string[] => {
   try { return JSON.parse(localStorage.getItem(k) ?? "[]"); } catch { return []; }
 };
@@ -143,11 +143,11 @@ const loadOpen = (k: string): string[] => {
 /**
  * The explorer, drawn as an open spiral notebook with a name label. Lazy:
  * a directory's children load when it is opened. Expanded directories persist
- * per index; the active page's ancestors open automatically; arrow keys move.
+ * per workspace; the active page's ancestors open automatically; arrow keys move.
  */
 export function Tree() {
   const scope = useScope();
-  const key = storeKey(scope.ws, scope.index);
+  const key = storeKey(scope.ws);
   const [open, setOpen] = useState(() => new Set(loadOpen(key)));
   const active = useActive();
   const root = useTree("");
@@ -187,7 +187,7 @@ export function Tree() {
   const accent = useAccent();
   const readOnly = useReadOnly();
   const [loc, navigate] = useLocation();
-  const move = useIndexMutation(
+  const move = useScopeMutation(
     (s, v: { from: string; to: string }) => api.move(s, v.from, v.to),
     (_, v) => `Moved it to ${parentDir(v.to) || "the front page"}. Links are fixed, you’re welcome.`,
   );
@@ -207,7 +207,7 @@ export function Tree() {
   const atRoot = active?.kind === "dir" && active.path === "";
   const frontTarget = useDropTarget("", ctx.drop);
   return (
-    <nav aria-label="Bundle tree" onKeyDown={onKeyDown} className="relative ml-5 mb-6">
+    <nav aria-label="Workspace tree" onKeyDown={onKeyDown} className="relative ml-5 mb-6">
       {/* the notebook's cover, peeking out behind the page */}
       <Sketch aria-hidden="true" className="absolute! inset-0 translate-x-[-8px] translate-y-[8px] -rotate-1" rough={scribble(accent)} />
       <Sketch className="notebook -rotate-[0.6deg] bg-paper" rough={{ strokeWidth: 2.2 }}>
@@ -221,7 +221,7 @@ export function Tree() {
               className={`no-wavy flex size-full min-w-0 flex-col items-center justify-center rounded-md pr-9 pl-2 text-ink no-underline hover:bg-[var(--hover)]`}>
               <span className="flex max-w-full items-center gap-1.5 font-head text-base font-bold">
                 <DoodleIcon name="notebook" size={22} fallback={<span aria-hidden="true">📒</span>} />
-                <span className="min-w-0 truncate">{scope.index}</span>
+                <span className="min-w-0 truncate">{scope.ws}</span>
               </span>
             </Link>
           </Sketch>
@@ -239,7 +239,7 @@ export function Tree() {
         {!root.data && !root.error && <TreeSkeleton />}
         {root.data && (
           <ul role="tree" className="m-0 list-none p-0">
-            {/* the index's top level: everything at the root, plus New concept / New folder there */}
+            {/* the workspace's top level: everything at the root, plus New concept / New folder there */}
             <li role="treeitem" aria-selected={atRoot}>
               <div className={`flex items-center rounded-lg ${frontTarget.over ? "drop-target" : ""}`} {...frontTarget.props}>
                 <span aria-hidden="true" className="w-6 shrink-0" />
