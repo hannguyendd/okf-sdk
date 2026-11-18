@@ -593,7 +593,8 @@ def search_workspace(
     """Semantic search over the ``_index.md`` files of a workspace.
 
     ``paths`` narrows the scope to those directories and everything below them
-    (``None`` or empty means the whole workspace). Syncs the workspace vector
+    (``None``, empty, or any entry naming the root means the whole workspace;
+    a bare ``str`` is a ``TypeError``). Syncs the workspace vector
     store first (embedding only what changed), then returns up to ``top_k`` hits
     ``{kind, dir, path, score, excerpt}``, best first. Raises if the embedding
     server fails; never answers from a store it could not bring up to date.
@@ -603,7 +604,12 @@ def search_workspace(
         raise ValueError("query must not be blank")
     if not isinstance(top_k, int) or isinstance(top_k, bool) or not 1 <= top_k <= _MAX_TOP_K:
         raise ValueError(f"top_k must be an integer in 1..{_MAX_TOP_K}")
-    scope = list(dict.fromkeys(p for p in (_clean_dir(p) for p in paths or []) if p))
+    if paths is not None and not isinstance(paths, (list, tuple)):
+        # A bare str would otherwise be iterated character by character.
+        raise TypeError("paths must be a list of directories")
+    cleaned = [_clean_dir(p) for p in paths or []]
+    # The root ("", ".", "a/..") covers everything: no narrowing at all.
+    scope = [] if "" in cleaned else list(dict.fromkeys(cleaned))
     for p in scope:
         if not workspace.storage.is_dir(p):
             raise FileNotFoundError(f"no directory {p!r} in workspace {workspace.name!r}")

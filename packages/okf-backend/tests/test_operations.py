@@ -808,6 +808,19 @@ def test_search_empty_paths_means_whole_workspace(tmp_path):
     assert len(hits) == 3
 
 
+@pytest.mark.parametrize("paths", [["", "a"], [".", "b"], ["a/..", "a"], ["b", "./"]])
+def test_search_root_in_paths_means_whole_workspace(tmp_path, paths):
+    hits = _search(_workspace(tmp_path), "q", tmp_path, _SearchEmbedder(), 10, paths)
+    assert {h["path"] for h in hits} == {"a/_index.md", "a/x/_index.md", "b/_index.md"}
+
+
+def test_search_rejects_bare_string_paths(tmp_path):
+    emb = _SearchEmbedder()
+    with pytest.raises(TypeError, match="paths must be a list of directories"):
+        _search(_workspace(tmp_path), "q", tmp_path, emb, 10, "a")
+    assert emb.calls == []
+
+
 def test_search_unknown_path_errors(tmp_path):
     with pytest.raises(FileNotFoundError, match="no directory 'zzz' in workspace 'w'"):
         _search(_workspace(tmp_path), "q", tmp_path, _SearchEmbedder(), paths=["zzz"])
