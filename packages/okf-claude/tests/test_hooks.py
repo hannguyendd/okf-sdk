@@ -91,3 +91,27 @@ def test_episode_failure_returns_1_and_logs(storage, transcript_file):
                        session_id="s", summarize=boom)
     assert rc == 1
     assert "no model" in episodes.log_path().read_text()
+
+
+def _make_v1(okf_home, name="team"):
+    d = okf_home / "workspaces" / name / ".okf"
+    d.mkdir(parents=True)
+    (d / "workspace.json").write_text('{"version": 1, "bundles": {}}')
+    return d.parent
+
+
+def test_session_start_on_v1_workspace_exits_zero_and_logs(okf_home):
+    _make_v1(okf_home)
+    rc, out = _start({"cwd": "/p"})
+    assert rc == 0 and "OKF memory" in out
+    assert "okf-migrate-v2" in episodes.log_path().read_text()
+
+
+def test_episode_on_v1_workspace_writes_nothing_and_logs(okf_home, transcript_file):
+    ws = _make_v1(okf_home)
+    called = []
+    rc = hooks.episode(workspace="team", transcript_path=str(transcript_file),
+                       session_id="s", summarize=lambda t: called.append(t))
+    assert rc == 1 and called == []  # fails before spending a summarizer call
+    assert "okf-migrate-v2" in episodes.log_path().read_text()
+    assert [p.name for p in ws.iterdir()] == [".okf"]

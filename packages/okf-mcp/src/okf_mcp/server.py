@@ -55,10 +55,23 @@ def workspace(ctx) -> Workspace:
             "no workspace: start okf-mcp with --workspace <name> (stdio) or send "
             f"the X-OKF-Workspace header (http); workspaces: {_names()}"
         )
+    return _get(name, ValueError)
+
+
+def _get(name: str, error: type[Exception], prefix: str = "") -> Workspace:
+    """``registry().get(name)``; an unknown or invalid name lists the workspaces,
+    and an unusable (v1) workspace keeps its ``okf-migrate-v2`` message."""
+    reg = registry()
     try:
-        return registry().get(name)
-    except (ValueError, FileNotFoundError):
-        raise ValueError(f"unknown workspace '{name}'; workspaces: {_names()}") from None
+        known = reg.exists(name)
+    except ValueError:
+        known = False
+    if not known:
+        raise error(f"{prefix}unknown workspace '{name}'; workspaces: {_names()}") from None
+    try:
+        return reg.get(name)
+    except (ValueError, FileNotFoundError) as exc:
+        raise error(f"{prefix}{exc}") from None
 
 
 def _echo(ws: Workspace, result: Any) -> dict:
@@ -272,12 +285,7 @@ def main(argv: list[str] | None = None) -> None:
     else:
         if not args.workspace:
             raise SystemExit(f"okf-mcp: --workspace is required for stdio; workspaces: {_names()}")
-        try:
-            registry().get(args.workspace)
-        except (ValueError, FileNotFoundError):
-            raise SystemExit(
-                f"okf-mcp: unknown workspace '{args.workspace}'; workspaces: {_names()}"
-            ) from None
+        _get(args.workspace, SystemExit, "okf-mcp: ")
         _fixed_workspace = args.workspace
     mcp.settings.host = args.host
     mcp.settings.port = args.port

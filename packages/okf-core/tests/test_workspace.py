@@ -93,6 +93,32 @@ def test_v1_workspace_json_points_to_migration(tmp_path: Path):
         ws.color()
 
 
+def _make_v1(tmp_path: Path, name: str = "old") -> Path:
+    d = tmp_path / name
+    (d / ".okf").mkdir(parents=True)
+    (d / ".okf" / "workspace.json").write_text('{"version": 1, "bundles": {}}')
+    return d
+
+
+def test_check_raises_for_v1(tmp_path: Path):
+    _make_v1(tmp_path)
+    ws = WorkspaceRegistry(tmp_path).list()[0]
+    with pytest.raises(ValueError, match="okf-migrate-v2"):
+        ws.check()
+    WorkspaceRegistry(tmp_path).create("new").check()  # v2: no error
+
+
+def test_get_refuses_v1_but_list_still_enumerates_it(tmp_path: Path):
+    _make_v1(tmp_path)
+    reg = WorkspaceRegistry(tmp_path)
+    reg.create("new")
+    with pytest.raises(ValueError, match="old.*okf-migrate-v2"):
+        reg.get("old")
+    assert reg.get("new").name == "new"
+    assert [w.name for w in reg.list()] == ["new", "old"]
+    assert reg.exists("old")
+
+
 @pytest.mark.parametrize("text", ["{not json", '{"version": 3}', "[]"])
 def test_corrupt_workspace_json_raises_and_is_not_overwritten(tmp_path: Path, text: str):
     ws = WorkspaceRegistry(tmp_path).create("w")

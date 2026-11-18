@@ -2,11 +2,13 @@ import { http, HttpResponse } from "msw";
 
 /** In-memory stand-in for the okf-backend API, enough to drive the UI in tests. */
 interface FakeConcept { frontmatter: Record<string, unknown>; body: string }
-interface FakeWorkspace { color: string | null; descriptions: Record<string, string>; concepts: Record<string, FakeConcept>; dirs: Set<string> }
+interface FakeWorkspace { color: string | null; descriptions: Record<string, string>; concepts: Record<string, FakeConcept>; dirs: Set<string>; error?: string }
+
+export const V1_ERROR = "workspace 'old' is in the old v1 layout (.okf/workspace.json is version 1); run okf-migrate-v2";
 
 export interface Call { method: string; path: string; body?: unknown }
 
-export function createBackend(opts: { readOnly?: boolean; search?: boolean } = {}) {
+export function createBackend(opts: { readOnly?: boolean; search?: boolean; v1?: boolean } = {}) {
   const workspaces: Record<string, FakeWorkspace> = {
     w: {
       color: null,
@@ -20,6 +22,8 @@ export function createBackend(opts: { readOnly?: boolean; search?: boolean } = {
     },
     empty: { color: null, descriptions: {}, dirs: new Set(), concepts: {} },
   };
+  // An unmigrated (bundle-era) workspace: listed with its error, refused everywhere else.
+  if (opts.v1) workspaces.old = { color: null, descriptions: {}, dirs: new Set(), concepts: {}, error: V1_ERROR };
   const calls: Call[] = [];
 
   const json = (data: unknown, status = 200) => HttpResponse.json(data as never, { status });
@@ -51,7 +55,7 @@ export function createBackend(opts: { readOnly?: boolean; search?: boolean } = {
 
     if (path === "/api/info") return json({ mode: "workspace", location: "/mem", read_only: !!opts.readOnly, search_enabled: !!opts.search });
     if (path === "/api/workspaces" && method === "GET") {
-      return json(Object.entries(workspaces).map(([name, w]) => ({ name, color: w.color })));
+      return json(Object.entries(workspaces).map(([name, w]) => (w.error ? { name, color: null, error: w.error } : { name, color: w.color })));
     }
     if (path === "/api/workspaces" && method === "POST") {
       workspaces[body!.name] = { color: null, descriptions: {}, dirs: new Set(), concepts: {} };
@@ -63,6 +67,7 @@ export function createBackend(opts: { readOnly?: boolean; search?: boolean } = {
     if (!m) return json({ error: "no route" }, 404);
     const ix = workspaces[m[1]];
     if (!ix) return json({ error: `workspace not found: ${m[1]}` }, 404);
+    if (ix.error) return json({ error: ix.error }, 400);
     const rest = m[2];
 
   if (rest === "tree") return json(tree(ix, url.searchParams.get("dir") ?? ""));

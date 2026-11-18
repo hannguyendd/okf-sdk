@@ -151,6 +151,31 @@ def test_main_requires_workspace_for_stdio(home, monkeypatch):
     assert seen["transport"] == "stdio" and server._fixed_workspace == "w"
 
 
+def _make_v1(home, name="old"):
+    d = home / "workspaces" / name / ".okf"
+    d.mkdir(parents=True)
+    (d / "workspace.json").write_text('{"version": 1, "bundles": {}}')
+
+
+def test_v1_workspace_refused_by_tools(home, monkeypatch):
+    _make_v1(home)
+    with pytest.raises(ValueError, match="okf-migrate-v2"):
+        run(server.list_(_ctx({"x-okf-workspace": "old"})))
+    with pytest.raises(ValueError, match="okf-migrate-v2"):
+        run(server.add(_ctx({"x-okf-workspace": "old"}), "n/a", {"type": "note"}, "x"))
+    assert not (home / "workspaces" / "old" / "n").exists()
+    monkeypatch.setattr(server, "_fixed_workspace", "old")
+    with pytest.raises(ValueError, match="okf-migrate-v2"):
+        run(server.list_(_ctx()))
+
+
+def test_main_stdio_exits_for_v1_workspace(home, monkeypatch):
+    _make_v1(home)
+    monkeypatch.setattr(mcp, "run", lambda **kw: pytest.fail("must not start"))
+    with pytest.raises(SystemExit, match="okf-migrate-v2"):
+        server.main(["--workspace", "old"])
+
+
 def test_main_http_port(home, monkeypatch):
     seen = {}
     monkeypatch.setattr(mcp, "run", lambda transport="stdio", **kw: seen.update(transport=transport))

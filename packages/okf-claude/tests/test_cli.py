@@ -22,6 +22,23 @@ def test_setup_no_create_fails_cleanly(tmp_path, okf_home, capsys):
     assert "no workspace 'team'" in capsys.readouterr().err
 
 
+def _make_v1(okf_home, name="team"):
+    d = okf_home / "workspaces" / name / ".okf"
+    d.mkdir(parents=True)
+    (d / "workspace.json").write_text('{"version": 1, "bundles": {}}')
+
+
+@pytest.mark.parametrize("flags", [[], ["--no-create"]])
+def test_setup_refuses_v1_workspace(tmp_path, okf_home, capsys, flags):
+    _make_v1(okf_home)
+    project = tmp_path / "proj"
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["setup", "-w", "team", "--project", str(project), "--no-mcp", *flags])
+    assert exc.value.code == 1
+    assert "okf-migrate-v2" in capsys.readouterr().err
+    assert not (project / ".claude").exists()
+
+
 def test_setup_rejects_bad_server_env(tmp_path, okf_home):
     with pytest.raises(SystemExit):
         cli.main(["setup", "-w", "t", "--project", str(tmp_path), "--server-env", "NOEQUALS"])

@@ -41,6 +41,16 @@ describe("workspaces", () => {
     expect(backend.calls.some((c) => c.path.includes("/indexes") || c.path.includes("/bundle"))).toBe(false);
   });
 
+  it("lists an unmigrated workspace with what to run, next to the working ones", async () => {
+    const { backend } = start("#/", { v1: true });
+    const old = await screen.findByRole("region", { name: "Workspace old" });
+    expect(within(old).getByText(/run okf-migrate-v2/)).toBeInTheDocument();
+    expect(within(old).queryByRole("radiogroup")).not.toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Workspace w" })).toBeInTheDocument();
+    expect(await screen.findByText("Meeting notes")).toBeInTheDocument();
+    expect(backend.calls.some((c) => c.path.startsWith("/api/workspaces/old/"))).toBe(false);
+  });
+
   it("saves a workspace colour", async () => {
     const { user, backend } = start("#/w/w");
     const picker = await screen.findByRole("radiogroup", { name: "Colour of w" });

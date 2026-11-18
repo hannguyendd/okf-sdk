@@ -3,7 +3,8 @@
 export interface Info { mode: "workspace"; location: string; read_only: boolean; search_enabled: boolean }
 /** Crayon colours a workspace can be tagged with (okf_core.WORKSPACE_COLORS). */
 export type WorkspaceColor = "yellow" | "pink" | "green" | "blue" | "red" | "orange" | "purple";
-export interface WorkspaceInfo { name: string; color: WorkspaceColor | null }
+/** `error` is set when the workspace can't be opened (e.g. it still needs `okf-migrate-v2`). */
+export interface WorkspaceInfo { name: string; color: WorkspaceColor | null; error?: string }
 export interface DirEntry { name: string; dir: string; description: string | null }
 export interface ConceptMeta { id: string; type: string | null; title: string | null; description: string | null; tags: string[] }
 export interface Tree { dir: string; description: string | null; directories: DirEntry[]; concepts: ConceptMeta[] }

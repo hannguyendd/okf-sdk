@@ -145,7 +145,11 @@ def _save_json(path: Path, data: dict) -> None:
 
 
 def ensure_target(workspace: str, *, create: bool) -> list[str]:
-    """Check the workspace exists; create it when ``create``."""
+    """Check the workspace exists and is usable; create it when ``create``.
+
+    A v1 (bundle-era) workspace raises ``ValueError`` pointing to
+    ``okf-migrate-v2`` before anything is installed.
+    """
     registry = WorkspaceRegistry()
     done: list[str] = []
     if not registry.exists(workspace):
@@ -153,6 +157,8 @@ def ensure_target(workspace: str, *, create: bool) -> list[str]:
             raise FileNotFoundError(f"no workspace {workspace!r} (pass --create to create it)")
         registry.create(workspace)
         done.append(f"created workspace {workspace!r}")
+    else:
+        registry.get(workspace)  # raises for a v1 workspace
     return done
 
 

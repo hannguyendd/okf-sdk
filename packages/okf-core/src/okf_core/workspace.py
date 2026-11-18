@@ -82,13 +82,24 @@ class Workspace:
         except ValueError as exc:
             raise ValueError(f"corrupt {key} in workspace {self.name!r}: {exc}") from exc
         if isinstance(data, dict) and data.get("version") == 1:
-            raise ValueError(f"{key} is version 1; run okf-migrate-v2")
+            raise ValueError(
+                f"workspace {self.name!r} is in the old v1 layout ({key} is version 1); "
+                "run okf-migrate-v2"
+            )
         if not isinstance(data, dict) or data.get("version") != _WORKSPACE_FILE_VERSION:
             raise ValueError(
                 f"unsupported or corrupt {key} in workspace {self.name!r}: "
                 f"expected {{\"version\": {_WORKSPACE_FILE_VERSION}}}"
             )
         return data
+
+    def check(self) -> None:
+        """Raise ``ValueError`` unless the workspace is usable (v2 metadata).
+
+        A v1 (bundle-era) workspace fails with a message pointing to
+        ``okf-migrate-v2``; a corrupt ``workspace.json`` fails too.
+        """
+        self._read_meta()
 
     def _write_meta(self, data: dict) -> None:
         self.storage.write_text(
@@ -144,9 +155,17 @@ class WorkspaceRegistry:
         return ws
 
     def get(self, name: str) -> Workspace:
+        """The named workspace, checked usable (see :meth:`Workspace.check`).
+
+        ``FileNotFoundError`` if missing; ``ValueError`` for a bad name or a
+        v1/corrupt workspace. :meth:`list` does not check, so tools such as
+        ``okf-migrate-v2`` can still enumerate v1 workspaces.
+        """
         if not self.exists(name):
             raise FileNotFoundError(f"No workspace {name!r}")
-        return self._workspace(name)
+        ws = self._workspace(name)
+        ws.check()
+        return ws
 
     def list(self) -> list[Workspace]:
         return [self._workspace(n) for n in _subdirs(self.storage) if _NAME_RE.fullmatch(n)]

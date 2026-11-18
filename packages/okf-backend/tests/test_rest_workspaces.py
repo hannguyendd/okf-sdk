@@ -31,6 +31,32 @@ def test_list_workspaces_has_no_indexes(registry):
     ]
 
 
+def _make_v1(registry, name="old"):
+    d = registry.root / name / ".okf"
+    d.mkdir(parents=True)
+    (d / "workspace.json").write_text('{"version": 1, "bundles": {}}')
+
+
+def test_v1_workspace_is_listed_with_error_and_refused(registry):
+    registry.get("work").set_color("pink")
+    _make_v1(registry)
+    c = client(registry)
+    r = c.get("/api/workspaces")
+    assert r.status_code == 200
+    rows = r.json()
+    assert rows[0] == {"name": "empty", "color": None}
+    assert rows[1]["name"] == "old" and rows[1]["color"] is None
+    assert "okf-migrate-v2" in rows[1]["error"]
+    assert rows[2] == {"name": "work", "color": "pink"}
+    for path in ("tree", "index", "concepts", "dirs", "overview"):
+        resp = c.get(f"/api/workspaces/old/{path}")
+        assert resp.status_code == 400 and "okf-migrate-v2" in resp.json()["error"], path
+    resp = c.post("/api/workspaces/old/concepts", json={"concept_id": "x", "frontmatter": {"type": "t"}})
+    assert resp.status_code == 400
+    assert c.post("/api/workspaces/old/color", json={"color": "red"}).status_code == 400
+    assert not (registry.root / "old" / "x.md").exists()
+
+
 def test_create_workspace(registry):
     c = client(registry)
     r = c.post("/api/workspaces", json={"name": "new"})

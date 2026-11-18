@@ -239,7 +239,15 @@ def create_app(
         ]
 
     def list_workspaces(request, body):
-        return [{"name": w.name, "color": w.color()} for w in registry.list()]
+        # One unusable (v1 / corrupt) workspace must not hide the others: it is
+        # listed with its error so the portal can say what to run.
+        rows = []
+        for w in registry.list():
+            try:
+                rows.append({"name": w.name, "color": w.color()})
+            except ValueError as exc:
+                rows.append({"name": w.name, "color": None, "error": str(exc)})
+        return rows
 
     def create_workspace(request, body):
         registry.create(body["name"])

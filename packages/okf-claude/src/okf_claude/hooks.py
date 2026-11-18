@@ -149,9 +149,10 @@ def write_episode_from_transcript(
     if transcript.user_prompt_count(turns) < MIN_USER_PROMPTS:
         log(f"episode {session_id}: fewer than {MIN_USER_PROMPTS} prompts; skipped")
         return None
+    # Resolve (and check) the workspace before paying for a summary.
+    storage = episodes.workspace_storage(workspace)
     text = transcript.render(turns)
     summary = (summarize or (lambda t: episodes.summarize_with_claude(t, model=model)))(text)
-    storage = episodes.workspace_storage(workspace)
     result = episodes.write_episode(
         storage,
         summary,

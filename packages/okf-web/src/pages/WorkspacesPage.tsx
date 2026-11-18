@@ -56,14 +56,24 @@ export function WorkspacesPage() {
             style={{ rotate: `${tilts[i % tilts.length]}deg` }} rough={{ strokeWidth: 2.2 }}>
             {/* notebook-cover strip in the workspace colour */}
             <Sketch aria-hidden="true" className="absolute! -top-1 right-6 left-6 h-4 -rotate-[0.6deg]" rough={{ ...scribble(toneOf(w)), roughness: 2.2 }} />
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2><Link href={workspacePath(w.name)}
-                onMouseEnter={() => prefetch.workspace({ ws: w.name })}
-                onFocus={() => prefetch.workspace({ ws: w.name })}
-                className="no-wavy text-ink hover:text-ink">{w.name} <span className="text-base text-ink/50">→</span></Link></h2>
-              {!readOnly && <ColorPicker value={toneOf(w)} chosen={w.color !== null} onPick={(color) => setColor.mutate({ ws: w.name, color })} name={w.name} />}
-            </div>
-            <WorkspaceBlurb ws={w.name} />
+            {w.error ? (
+              <>
+                {/* can't be opened (e.g. still in the old layout): say why, link nothing */}
+                <h2 className="text-ink/70">{w.name}</h2>
+                <p className="text-ink/60">Can’t open this one yet. {w.error}</p>
+              </>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2><Link href={workspacePath(w.name)}
+                    onMouseEnter={() => prefetch.workspace({ ws: w.name })}
+                    onFocus={() => prefetch.workspace({ ws: w.name })}
+                    className="no-wavy text-ink hover:text-ink">{w.name} <span className="text-base text-ink/50">→</span></Link></h2>
+                  {!readOnly && <ColorPicker value={toneOf(w)} chosen={w.color !== null} onPick={(color) => setColor.mutate({ ws: w.name, color })} name={w.name} />}
+                </div>
+                <WorkspaceBlurb ws={w.name} />
+              </>
+            )}
           </Sketch>
         ))}
       </div>
