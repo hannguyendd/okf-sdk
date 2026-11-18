@@ -60,7 +60,7 @@ def _tree(storage: Storage, dir: str | None) -> dict:
 
 
 def _overview(storage: Storage, recent: int = 5) -> dict:
-    """At-a-glance stats for one bundle: concept/directory counts, types, latest concepts."""
+    """At-a-glance stats for the workspace: concept/directory counts, types, latest concepts."""
     bundle = Bundle.load(storage)
     concepts = list(bundle)
     types: dict[str, int] = {}
@@ -108,7 +108,7 @@ def create_app(
     search_max_chars: int = 6000,
     static_dir: Path | str | None = None,
 ) -> Starlette:
-    """Serve a workspace registry: each workspace is an OKF bundle addressed under
+    """Serve a workspace registry: each workspace is addressed under
     ``/api/workspaces/{workspace}``; search uses the workspace's ``.okf/vectors.db``."""
 
     def guard() -> None:

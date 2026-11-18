@@ -1,4 +1,4 @@
-"""Producer operations over an OKF bundle (framework-agnostic).
+"""Producer operations over an OKF workspace (framework-agnostic).
 
 Every operation takes ``bundle_root`` as a ``Path``, location string, or
 ``okf_core.Storage`` and does all I/O through the storage interface; write
@@ -53,14 +53,14 @@ def _name_of(key: str) -> str:
 
 
 def _clean_dir(dir: str | None) -> str:
-    """Normalize a bundle-relative directory arg to a key; reject escapes."""
+    """Normalize a workspace-relative directory arg to a key; reject escapes."""
     if not dir:
         return ""
     norm = posixpath.normpath(dir)
     if norm == ".":
         return ""
     if norm.startswith("/") or norm == ".." or norm.startswith("../"):
-        raise ValueError(f"dir escapes the bundle root: {dir}")
+        raise ValueError(f"dir escapes the workspace root: {dir}")
     return norm
 
 
@@ -187,7 +187,7 @@ def patch_concept(
 
 
 def reindex_bundle(bundle_root: "Path | str | Storage") -> dict:
-    """Regenerate every ``_index.md`` in the bundle from current content.
+    """Regenerate every ``_index.md`` in the workspace from current content.
 
     Repairs indexes that have drifted (e.g. files edited outside the producer
     tools). This is index maintenance, not a concept change, so it does not
@@ -245,7 +245,7 @@ def read_index(
 ) -> list[dict]:
     """Return ``_index.md`` files for progressive disclosure, breadth-first.
 
-    Starts at ``dir`` (bundle root if omitted) and descends ``depth`` levels
+    Starts at ``dir`` (workspace root if omitted) and descends ``depth`` levels
     (1..3). Missing ``_index.md`` files are skipped; read-only.
     """
     if not isinstance(depth, int) or isinstance(depth, bool) or not 1 <= depth <= 3:
@@ -482,7 +482,7 @@ def describe_directory(
     An empty/whitespace ``description`` clears the key (reverting to the
     synthesized contents summary). Reindexes so the value reaches the parent's
     caption, and appends an Update entry to the directory's ``_log.md``. Fails if
-    ``dir`` escapes the bundle root, is not a directory, or has no ``_index.md``
+    ``dir`` escapes the workspace root, is not a directory, or has no ``_index.md``
     (directories only exist once populated, so there is always an index to edit).
     The root is the exception: a fresh workspace has no root ``_index.md`` yet,
     so a missing one is treated as empty and created.
@@ -543,7 +543,7 @@ def create_directory(
     storage = open_storage(bundle_root)
     target = _clean_dir(dir)
     if not target:
-        raise ValueError("dir must name a directory below the bundle root")
+        raise ValueError("dir must name a directory below the workspace root")
     parse_concept_id(target)  # every segment must be a valid id segment
     desc = description.strip()
     with storage.lock():

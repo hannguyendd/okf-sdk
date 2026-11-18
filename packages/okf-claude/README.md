@@ -37,6 +37,13 @@ Re-running replaces only its own entries. Restart Claude Code afterwards.
 | `--recent` | `5` | Episodes listed at session start (`0` for guidance only). |
 | `--server-env KEY=VALUE` | | Extra MCP server env, e.g. `OKF_EMBEDDING_URL=http://localhost:1234/v1` and `OKF_EMBEDDING_MODEL=...` to enable `search`. Repeatable. |
 
+Upgrading from the bundle era (before `--bundle` was removed)? Run
+`uv run okf-migrate-v2 --dry-run`, then `uv run okf-migrate-v2`, then
+`okf-claude setup --workspace <ws>` again. Episodes written before migrating
+stay under their old bundle directory (for example `<bundle>/episodes/`); new
+ones go to `episodes/` at the workspace root. Old hooks that still pass `--bundle` are ignored and logged, so they do
+not break a session until you re-run setup.
+
 Remove everything with `uv run okf-claude uninstall --project ~/code/myproject`
 (same `--scope`). Episodes already written stay in the workspace.
 

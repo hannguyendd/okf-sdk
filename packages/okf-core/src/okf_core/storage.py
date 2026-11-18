@@ -1,6 +1,6 @@
 """Storage interface for OKF bundles, with local-filesystem and in-memory backends.
 
-Everything in ``okf_core`` (and ``okf_mcp``) reads and writes bundle files
+Everything in ``okf_core`` (and ``okf_backend``) reads and writes bundle files
 through :class:`Storage`, so the backing infrastructure can be swapped. Keys are
 bundle-relative POSIX strings (``"tables/orders.md"``); ``""`` is the bundle
 root. See ``docs/superpowers/specs/2026-10-19-okf-storage-interface-design.md``.

@@ -1,7 +1,7 @@
 [project]
 name = "okf-mcp"
 version = "0.1.0"
-description = "Producer MCP server for authoring Open Knowledge Format (OKF) bundles"
+description = "Producer MCP server for authoring Open Knowledge Format (OKF) workspaces"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
