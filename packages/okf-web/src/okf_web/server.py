@@ -6,8 +6,7 @@ import argparse
 from pathlib import Path
 
 from okf_core import WorkspaceRegistry
-from okf_mcp.embeddings import EmbeddingConfig
-from okf_mcp.server import Settings
+from okf_backend.settings import BackendSettings
 
 from okf_web.app import create_app
 
@@ -38,20 +37,11 @@ def _static_dir(override: Path | None) -> Path | None:
 
 def build_app(args: argparse.Namespace):
     """Serve the workspaces under ``$OKF_HOME`` (default ``~/.okf``)."""
-    settings = Settings()
-    config = (
-        EmbeddingConfig(
-            url=settings.embedding_url,
-            model=settings.embedding_model,
-            api_key=settings.embedding_api_key,
-        )
-        if settings.embedding_url and settings.embedding_model
-        else None
-    )
+    settings = BackendSettings()
     return create_app(
         WorkspaceRegistry(),
         read_only=args.read_only,
-        search_config=config,
+        search_config=settings.embedding_config(),
         search_max_chars=settings.embedding_max_chars,
         static_dir=_static_dir(args.static),
     )

@@ -4,7 +4,7 @@ import math
 import httpx
 import pytest
 
-from okf_mcp.embeddings import EmbeddingConfig, EmbeddingError, embed_texts
+from okf_backend.embeddings import EmbeddingConfig, EmbeddingError, embed_texts
 
 
 def _client(handler):

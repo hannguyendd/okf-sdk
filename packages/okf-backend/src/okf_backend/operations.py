@@ -27,8 +27,8 @@ from okf_core import (
     strip_link_ids,
 )
 
-from okf_mcp.embeddings import EmbeddingConfig, embed_texts
-from okf_mcp.vector_store import Embedder, VectorStore, workspace_db_path
+from okf_backend.embeddings import EmbeddingConfig, embed_texts
+from okf_backend.vector_store import Embedder, VectorStore, workspace_db_path
 
 
 def _concept_key(concept_id: str) -> str:

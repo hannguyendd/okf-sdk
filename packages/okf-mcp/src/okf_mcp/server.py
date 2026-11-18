@@ -1,4 +1,4 @@
-"""FastMCP producer server exposing okf_mcp.operations as MCP tools.
+"""FastMCP producer server exposing okf_backend.operations as MCP tools.
 
 Every tool acts on a bundle inside a workspace (``~/.okf/workspaces/<ws>/<bundle>``,
 home overridable by ``OKF_HOME``). ``workspace``/``bundle`` are optional on every
@@ -14,31 +14,17 @@ import asyncio
 from typing import Any
 
 from mcp.server.fastmcp import Context, FastMCP
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
+from okf_backend import operations
+from okf_backend.settings import BackendSettings
 from okf_core import Storage, WorkspaceRegistry
 
-from okf_mcp import operations
-from okf_mcp.embeddings import EmbeddingConfig
 from okf_mcp.target import Target, resolve_target
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_prefix="OKF_", env_file=".env", extra="ignore"
-    )
-
+class Settings(BackendSettings):
     # Default target (overridden per call by tool args or request headers).
     workspace: str | None = None
     bundle: str | None = None
-
-    # Semantic search (``search`` tool). Only the tool needs these; leave unset to
-    # keep it disabled. ``embedding_url`` is an OpenAI-compatible base URL
-    # including any ``/v1`` prefix. Vectors live in ``<workspace>/.okf/vectors.db``.
-    embedding_url: str | None = None
-    embedding_model: str | None = None
-    embedding_api_key: str | None = None
-    embedding_max_chars: int = 6000
 
 
 settings = Settings()
@@ -283,15 +269,7 @@ async def search(
     first search after changes embeds what changed, so it can be slower.
     `workspace` is optional (defaults, else the user is asked).
     """
-    config = (
-        EmbeddingConfig(
-            url=settings.embedding_url,
-            model=settings.embedding_model,
-            api_key=settings.embedding_api_key,
-        )
-        if settings.embedding_url and settings.embedding_model
-        else None
-    )
+    backend = BackendSettings()  # read per call so the env is honoured
     target = await _target(ctx, workspace, None, need_bundle=False)
     ws = target.workspace
     scope = bundles if bundles is not None else (
@@ -304,8 +282,8 @@ async def search(
         top_k,
         scope,
         dir,
-        config=config,
-        max_chars=settings.embedding_max_chars,
+        config=backend.embedding_config(),
+        max_chars=backend.embedding_max_chars,
     )
     return {"workspace": ws.name, "bundles": scope, "hits": hits}
 

@@ -4,7 +4,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from okf_core import MemoryStorage, WorkspaceRegistry
-from okf_mcp import operations as ops
+from okf_backend import operations as ops
 from okf_web.app import create_app
 
 BASE = "/api/workspaces/w/indexes/b"

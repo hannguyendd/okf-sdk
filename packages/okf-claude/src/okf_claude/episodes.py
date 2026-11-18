@@ -2,7 +2,7 @@
 
 An episode is written by the SessionEnd hook from a model-written summary of the
 session transcript, and read back by the SessionStart hook so a new session
-starts with recent history. Writes go through ``okf_mcp.operations`` so they
+starts with recent history. Writes go through ``okf_backend.operations`` so they
 reindex and log like any other producer write.
 """
 
@@ -19,7 +19,7 @@ from pathlib import Path
 
 from okf_core import OKFDocument, Storage, WorkspaceRegistry, okf_home
 
-from okf_mcp import operations
+from okf_backend import operations
 
 EPISODE_DIR = "episodes"
 EPISODE_TYPE = "episode"

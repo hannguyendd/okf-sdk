@@ -1,0 +1,24 @@
+[project]
+name = "okf-backend"
+version = "0.1.0"
+description = "Shared OKF backend: bundle operations, semantic search, and settings"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "okf-core",
+    "pydantic-settings>=2.0",
+    "sqlite-vec>=0.1.9",
+    "httpx>=0.28.1",
+    "starlette>=0.40",
+    "uvicorn>=0.30",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/okf_backend"]
+
+[tool.uv.sources]
+okf-core = { workspace = true }

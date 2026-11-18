@@ -8,8 +8,7 @@ dependencies = [
     "mcp>=1.0",
     "pydantic-settings>=2.0",
     "okf-core",
-    "sqlite-vec>=0.1.9",
-    "httpx>=0.28.1",
+    "okf-backend",
 ]
 
 [project.scripts]
@@ -24,3 +23,4 @@ packages = ["src/okf_mcp"]
 
 [tool.uv.sources]
 okf-core = { workspace = true }
+okf-backend = { workspace = true }

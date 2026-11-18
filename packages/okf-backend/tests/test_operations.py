@@ -3,7 +3,7 @@ import re
 import pytest
 from okf_core import LocalStorage, OKFDocument, validate_bundle
 
-from okf_mcp import operations
+from okf_backend import operations
 
 
 def test_concept_key_builds_nested_key():
@@ -734,8 +734,8 @@ import shutil  # noqa: E402
 
 from okf_core import MemoryStorage, WorkspaceRegistry  # noqa: E402
 
-from okf_mcp.embeddings import EmbeddingConfig, EmbeddingError  # noqa: E402
-from okf_mcp.vector_store import VectorStoreError  # noqa: E402
+from okf_backend.embeddings import EmbeddingConfig, EmbeddingError  # noqa: E402
+from okf_backend.vector_store import VectorStoreError  # noqa: E402
 
 _WORDS = ["alpha", "beta", "gamma", "delta"]
 
@@ -912,7 +912,7 @@ def test_write_tools_never_touch_embedder_or_vector_file(tmp_path, monkeypatch):
     def forbidden(*a, **k):
         raise AssertionError("write tool contacted the embedding server")
 
-    monkeypatch.setattr("okf_mcp.embeddings.embed_texts", forbidden)
+    monkeypatch.setattr("okf_backend.embeddings.embed_texts", forbidden)
     root = tmp_path / "bundle"
     root.mkdir()
     fm = {"type": "Table", "title": "Orders", "description": "d"}

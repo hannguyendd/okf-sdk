@@ -1,4 +1,4 @@
-"""Starlette HTTP API over ``okf_mcp.operations`` for the bundles of a workspace registry."""
+"""Starlette HTTP API over ``okf_backend.operations`` for the bundles of a workspace registry."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from okf_core import (
     Workspace,
     WorkspaceRegistry,
 )
-from okf_mcp import operations
+from okf_backend import operations
 
 
 class _Forbidden(Exception):

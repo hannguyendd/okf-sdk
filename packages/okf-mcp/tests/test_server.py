@@ -5,7 +5,8 @@ import pytest
 
 from okf_core import WorkspaceRegistry
 
-from okf_mcp import operations, server
+from okf_backend import operations
+from okf_mcp import server
 from okf_mcp.server import Settings, mcp
 
 _ENV = (

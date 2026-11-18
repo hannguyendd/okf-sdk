@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "okf-core",
-    "okf-mcp",
+    "okf-backend",
 ]
 
 [project.scripts]
@@ -21,4 +21,4 @@ packages = ["src/okf_claude"]
 
 [tool.uv.sources]
 okf-core = { workspace = true }
-okf-mcp = { workspace = true }
+okf-backend = { workspace = true }

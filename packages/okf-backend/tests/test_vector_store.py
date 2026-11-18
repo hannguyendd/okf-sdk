@@ -7,7 +7,7 @@ from okf_core import MemoryStorage
 
 from okf_core import WorkspaceRegistry
 
-from okf_mcp.vector_store import VectorStore, VectorStoreError, workspace_db_path
+from okf_backend.vector_store import VectorStore, VectorStoreError, workspace_db_path
 
 DIM = 4
 WORDS = ["alpha", "beta", "gamma", "delta"]

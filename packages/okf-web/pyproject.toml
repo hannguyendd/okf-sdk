@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "okf-core",
-    "okf-mcp",
+    "okf-backend",
     "starlette>=0.40",
     "uvicorn>=0.30",
 ]
@@ -24,4 +24,4 @@ artifacts = ["src/okf_web/static"]
 
 [tool.uv.sources]
 okf-core = { workspace = true }
-okf-mcp = { workspace = true }
+okf-backend = { workspace = true }
