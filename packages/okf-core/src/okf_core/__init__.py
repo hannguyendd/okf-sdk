@@ -15,8 +15,15 @@ from okf_core.document import (
     OKFDocument,
     OKFDocumentError,
 )
+from okf_core.export import export_subtree
 from okf_core.index import regenerate_indexes
-from okf_core.links import rewrite_link_ids, rewrite_links, strip_link_ids, strip_links
+from okf_core.links import (
+    map_absolute_links,
+    rewrite_link_ids,
+    rewrite_links,
+    strip_link_ids,
+    strip_links,
+)
 from okf_core.paths import (
     concept_id_to_path,
     parse_concept_id,
@@ -51,6 +58,8 @@ __all__ = [
     "rewrite_link_ids",
     "strip_links",
     "strip_link_ids",
+    "map_absolute_links",
+    "export_subtree",
     "Storage",
     "Entry",
     "LocalStorage",
