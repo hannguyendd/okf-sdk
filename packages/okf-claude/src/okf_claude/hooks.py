@@ -34,7 +34,7 @@ def _read_event(stdin: TextIO) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def build_context(workspace: str, bundle: str, recent: list[dict]) -> str:
+def build_context(workspace: str, recent: list[dict]) -> str:
     if recent:
         lines = ["", "## Recent sessions (newest first)", ""]
         for e in recent:
@@ -52,7 +52,6 @@ def build_context(workspace: str, bundle: str, recent: list[dict]) -> str:
     text = episodes.prompt_text("session_start.md")
     return (
         text.replace("{{workspace}}", workspace)
-        .replace("{{bundle}}", bundle)
         .replace("{{recent}}", recent_text)
         .rstrip()
         + "\n"
@@ -60,22 +59,22 @@ def build_context(workspace: str, bundle: str, recent: list[dict]) -> str:
 
 
 def session_start(
-    workspace: str, bundle: str, *, recent: int = 5, stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout
+    workspace: str, *, recent: int = 5, stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout
 ) -> int:
     if os.environ.get(CHILD_ENV):
         return 0
     try:
         event = _read_event(stdin)
         try:
-            storage = episodes.bundle_storage(workspace, bundle)
+            storage = episodes.workspace_storage(workspace)
             items = episodes.recent_episodes(storage, project=event.get("cwd"), limit=recent)
-        except Exception as exc:  # missing bundle etc.: still give guidance
+        except Exception as exc:  # missing workspace etc.: still give guidance
             log(f"session-start: could not read episodes: {exc}")
             items = []
         output = {
             "hookSpecificOutput": {
                 "hookEventName": "SessionStart",
-                "additionalContext": build_context(workspace, bundle, items),
+                "additionalContext": build_context(workspace, items),
             }
         }
         stdout.write(json.dumps(output))
@@ -91,7 +90,6 @@ def _self_command() -> list[str]:
 
 def session_end(
     workspace: str,
-    bundle: str,
     *,
     model: str,
     stdin: TextIO = sys.stdin,
@@ -109,7 +107,6 @@ def session_end(
         cmd = _self_command() + [
             "episode",
             "--workspace", workspace,
-            "--bundle", bundle,
             "--model", model,
             "--transcript", str(path),
             "--session-id", str(session_id),
@@ -139,7 +136,6 @@ def _spawn_detached(cmd: list[str]) -> None:
 
 def write_episode_from_transcript(
     workspace: str,
-    bundle: str,
     *,
     transcript_path: str,
     session_id: str,
@@ -155,7 +151,7 @@ def write_episode_from_transcript(
         return None
     text = transcript.render(turns)
     summary = (summarize or (lambda t: episodes.summarize_with_claude(t, model=model)))(text)
-    storage = episodes.bundle_storage(workspace, bundle)
+    storage = episodes.workspace_storage(workspace)
     result = episodes.write_episode(
         storage,
         summary,
@@ -164,7 +160,7 @@ def write_episode_from_transcript(
         started=transcript.started_at(turns),
         reason=reason,
     )
-    log(f"episode {session_id}: {result['action']} {result['concept_id']} in {workspace}/{bundle}")
+    log(f"episode {session_id}: {result['action']} {result['concept_id']} in {workspace}")
     return result
 
 

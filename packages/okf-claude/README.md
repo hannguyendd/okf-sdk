@@ -1,11 +1,11 @@
 # okf-claude
 
 Claude Code integration for OKF: gives Claude Code sessions long-term memory in
-an OKF bundle.
+an OKF workspace.
 
 | Piece | What it does |
 |---|---|
-| `okf` MCP server | `okf-mcp`, pinned to one workspace + bundle (`OKF_WORKSPACE` / `OKF_BUNDLE`). |
+| `okf` MCP server | `okf-mcp`, pinned to one workspace (`okf-mcp --workspace`). |
 | **SessionStart** hook | Adds OKF usage guidance and the most recent episodes (newest first, the latest one in full) to the session's context. |
 | **SessionEnd** hook | Starts a detached background run that summarizes the transcript with `claude -p` (no tools, no MCP, no session saved) and writes it as an **episode** concept: `episodes/<date>-<session8>`. A resumed session updates its episode. Sessions with fewer than 2 prompts are skipped. |
 | `/okf-remember [what]` | Saves durable knowledge (decisions, conventions, gotchas) as a concept, updating an existing one instead of duplicating it. |
@@ -18,12 +18,12 @@ Hooks never break a session: errors go to `<OKF_HOME>/logs/okf-claude.log`.
 From the okf-sdk checkout, for the project you want memory in:
 
 ```sh
-scripts/setup-claude-code.sh --workspace team --bundle myproject --project ~/code/myproject
+scripts/setup-claude-code.sh --workspace team --project ~/code/myproject
 ```
 
 That runs `uv sync` and then `okf-claude setup`, which:
 
-1. creates the workspace and bundle if missing (`--no-create` to refuse);
+1. creates the workspace if missing (`--no-create` to refuse);
 2. registers the `okf` MCP server with `claude mcp add` (`--no-mcp` to skip);
 3. writes the hooks into a Claude Code settings file;
 4. installs the two slash commands.
@@ -38,11 +38,11 @@ Re-running replaces only its own entries. Restart Claude Code afterwards.
 | `--server-env KEY=VALUE` | | Extra MCP server env, e.g. `OKF_EMBEDDING_URL=http://localhost:1234/v1` and `OKF_EMBEDDING_MODEL=...` to enable `search`. Repeatable. |
 
 Remove everything with `uv run okf-claude uninstall --project ~/code/myproject`
-(same `--scope`). Episodes already written stay in the bundle.
+(same `--scope`). Episodes already written stay in the workspace.
 
 ## Customizing the prompts
 
 Prompts live in `src/okf_claude/prompts/`: `episode_summary.md` (the summarizer;
 `{{transcript}}` is replaced), `session_start.md` (the injected guidance;
-`{{workspace}}`, `{{bundle}}`, `{{recent}}`), and `commands/` (the slash
+`{{workspace}}`, `{{recent}}`), and `commands/` (the slash
 commands, copied on setup — re-run setup after editing them).

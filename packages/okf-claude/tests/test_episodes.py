@@ -24,39 +24,39 @@ def test_parse_summary_rejects_bad_output(text):
         episodes.parse_summary(text)
 
 
-def test_write_episode_creates_then_updates(bundle):
+def test_write_episode_creates_then_updates(storage):
     started = datetime(2026, 11, 13, 9, tzinfo=timezone.utc)
     s = Summary("Delete tool", "Added delete", "## Goal\nx", ["mcp"])
-    r1 = episodes.write_episode(bundle, s, session_id="abcdef123", project="/p", started=started, reason="exit")
+    r1 = episodes.write_episode(storage, s, session_id="abcdef123", project="/p", started=started, reason="exit")
     assert r1["action"] == "created" and r1["concept_id"] == "episodes/2026-11-13-abcdef12"
-    doc = OKFDocument.parse(bundle.read_text("episodes/2026-11-13-abcdef12.md"))
+    doc = OKFDocument.parse(storage.read_text("episodes/2026-11-13-abcdef12.md"))
     assert doc.frontmatter["type"] == "episode"
     assert doc.frontmatter["project"] == "/p"
     assert doc.frontmatter["session_id"] == "abcdef123"
-    index = OKFDocument.parse(bundle.read_text("episodes/_index.md"))
+    index = OKFDocument.parse(storage.read_text("episodes/_index.md"))
     assert index.frontmatter["description"] == episodes.EPISODE_DIR_DESCRIPTION
 
     s2 = Summary("Delete tool v2", "More", "## Goal\ny")
-    r2 = episodes.write_episode(bundle, s2, session_id="abcdef123", project="/p", started=started)
+    r2 = episodes.write_episode(storage, s2, session_id="abcdef123", project="/p", started=started)
     assert r2["action"] == "updated"
-    assert OKFDocument.parse(bundle.read_text("episodes/2026-11-13-abcdef12.md")).body.strip() == "## Goal\ny"
+    assert OKFDocument.parse(storage.read_text("episodes/2026-11-13-abcdef12.md")).body.strip() == "## Goal\ny"
 
 
-def test_recent_episodes_newest_first_and_prefers_project(bundle):
+def test_recent_episodes_newest_first_and_prefers_project(storage):
     for i, (sid, project) in enumerate([("aaaa1111", "/p"), ("bbbb2222", "/q"), ("cccc3333", "/p")]):
-        episodes.write_episode(bundle, Summary(f"E{i}", "", "b"), session_id=sid, project=project,
+        episodes.write_episode(storage, Summary(f"E{i}", "", "b"), session_id=sid, project=project,
                                started=datetime(2026, 11, 10 + i, tzinfo=timezone.utc))
-        doc = OKFDocument.parse(bundle.read_text(f"episodes/2026-11-{10 + i}-{sid}.md"))
+        doc = OKFDocument.parse(storage.read_text(f"episodes/2026-11-{10 + i}-{sid}.md"))
         doc.frontmatter["timestamp"] = f"2026-11-{10 + i}T00:00:00Z"
-        bundle.write_text(f"episodes/2026-11-{10 + i}-{sid}.md", doc.serialize())
-    assert [e["title"] for e in episodes.recent_episodes(bundle, project="/p")] == ["E2", "E0"]
-    assert [e["title"] for e in episodes.recent_episodes(bundle, project="/none")] == ["E2", "E1", "E0"]
-    assert len(episodes.recent_episodes(bundle, limit=1)) == 1
-    assert episodes.recent_episodes(bundle, limit=0) == []
+        storage.write_text(f"episodes/2026-11-{10 + i}-{sid}.md", doc.serialize())
+    assert [e["title"] for e in episodes.recent_episodes(storage, project="/p")] == ["E2", "E0"]
+    assert [e["title"] for e in episodes.recent_episodes(storage, project="/none")] == ["E2", "E1", "E0"]
+    assert len(episodes.recent_episodes(storage, limit=1)) == 1
+    assert episodes.recent_episodes(storage, limit=0) == []
 
 
-def test_recent_episodes_empty_bundle(bundle):
-    assert episodes.recent_episodes(bundle) == []
+def test_recent_episodes_empty_workspace(storage):
+    assert episodes.recent_episodes(storage) == []
 
 
 def test_summarize_with_claude_builds_isolated_command(okf_home, monkeypatch):
@@ -79,3 +79,11 @@ def test_summarize_with_claude_builds_isolated_command(okf_home, monkeypatch):
     assert seen["cmd"][seen["cmd"].index("--tools") + 1] == ""
     assert "TRANSCRIPT" in seen["input"] and "{{transcript}}" not in seen["input"]
     assert seen["env"][episodes.CHILD_ENV] == "1"
+
+
+def test_episode_written_at_workspace_root(storage):
+    r = episodes.write_episode(storage, Summary("T", "", "b"), session_id="abcdef123", project="/p",
+                               started=datetime(2026, 11, 13, tzinfo=timezone.utc))
+    ws_storage = episodes.workspace_storage("team")
+    assert r["concept_id"] == "episodes/2026-11-13-abcdef12"
+    assert ws_storage.exists("episodes/2026-11-13-abcdef12.md")

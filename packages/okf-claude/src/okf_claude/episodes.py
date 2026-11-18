@@ -43,8 +43,8 @@ class Summary:
     tags: list[str] = field(default_factory=list)
 
 
-def bundle_storage(workspace: str, bundle: str) -> Storage:
-    return WorkspaceRegistry().get(workspace).bundle_storage(bundle)
+def workspace_storage(workspace: str) -> Storage:
+    return WorkspaceRegistry().get(workspace).storage
 
 
 def episode_id(session_id: str, started: datetime | None) -> str:

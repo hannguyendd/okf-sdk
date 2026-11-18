@@ -8,7 +8,7 @@ from okf_claude import cli, installer
 def test_setup_end_to_end_without_mcp(tmp_path, okf_home, monkeypatch, capsys):
     monkeypatch.setattr(installer, "_bin", lambda name: f"/venv/bin/{name}")
     project = tmp_path / "proj"
-    cli.main(["setup", "-w", "team", "-b", "notes", "--project", str(project), "--no-mcp"])
+    cli.main(["setup", "-w", "team", "--project", str(project), "--no-mcp"])
     out = capsys.readouterr().out
     assert "created workspace 'team'" in out and "installed hooks" in out
     settings = json.loads((project / ".claude" / "settings.local.json").read_text())
@@ -17,11 +17,21 @@ def test_setup_end_to_end_without_mcp(tmp_path, okf_home, monkeypatch, capsys):
 
 def test_setup_no_create_fails_cleanly(tmp_path, okf_home, capsys):
     with pytest.raises(SystemExit) as exc:
-        cli.main(["setup", "-w", "team", "-b", "notes", "--project", str(tmp_path), "--no-create", "--no-mcp"])
+        cli.main(["setup", "-w", "team", "--project", str(tmp_path), "--no-create", "--no-mcp"])
     assert exc.value.code == 1
     assert "no workspace 'team'" in capsys.readouterr().err
 
 
 def test_setup_rejects_bad_server_env(tmp_path, okf_home):
     with pytest.raises(SystemExit):
-        cli.main(["setup", "-w", "t", "-b", "n", "--project", str(tmp_path), "--server-env", "NOEQUALS"])
+        cli.main(["setup", "-w", "t", "--project", str(tmp_path), "--server-env", "NOEQUALS"])
+
+
+def test_stale_bundle_hook_arg_exits_zero_and_logs(okf_home):
+    from okf_claude import episodes
+
+    with pytest.raises(SystemExit) as e:
+        cli.main(["hook", "session-start", "--workspace", "w", "--bundle", "b"])
+    assert e.value.code == 0
+    log = episodes.log_path().read_text()
+    assert "re-run okf-claude setup" in log and "--bundle" in log

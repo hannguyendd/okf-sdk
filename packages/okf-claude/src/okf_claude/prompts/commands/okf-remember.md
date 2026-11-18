@@ -14,7 +14,7 @@ something works) and save that.
    `mcp__okf__list`). If one fits, `mcp__okf__get` it and update it with
    `mcp__okf__patch` instead of creating a duplicate.
 2. Otherwise create it with `mcp__okf__add`. Choose a `concept_id` that fits the
-   bundle's existing layout (`read_index` shows it; segments use letters,
+   workspace's existing layout (`read_index` shows it; segments use letters,
    digits, `_`, `.`, `-`), e.g. `decisions/use-sqlite-vec`. Frontmatter: `type`
    (e.g. `decision`, `convention`, `howto`, `gotcha`, `reference`), `title`, a
    one-sentence `description`, and `tags`. Write the body as standalone
