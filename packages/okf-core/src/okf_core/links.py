@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import posixpath
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 from okf_core.paths import parse_concept_id
@@ -136,3 +137,24 @@ def strip_links(
     left untouched. Returns an equal body when nothing applies.
     """
     return strip_link_ids(body, _dir_key(doc_dir, bundle_root), target_ids)
+
+
+def map_absolute_links(body: str, fn: Callable[[str], str | None]) -> str:
+    """Rewrite the target of every absolute (``/x.md``) markdown link via ``fn``.
+
+    ``fn`` receives the bundle-relative target (leading ``/`` and ``#fragment``
+    removed). A string result replaces the target (``/`` and fragment are put
+    back); ``None`` leaves the link unchanged. Relative, ``//`` and ``scheme://``
+    links are skipped.
+    """
+
+    def _sub(m: re.Match[str]) -> str:
+        target = m.group("target")
+        if not target.startswith("/") or target.startswith("//") or "://" in target:
+            return m.group(0)
+        new = fn(target[1:])
+        if new is None:
+            return m.group(0)
+        return f"](/{new}{m.group('anchor') or ''})"
+
+    return _LINK_RE.sub(_sub, body)

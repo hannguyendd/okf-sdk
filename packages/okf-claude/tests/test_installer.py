@@ -22,7 +22,7 @@ class FakeRun:
 @pytest.fixture
 def cfg(tmp_path, okf_home, monkeypatch):
     monkeypatch.setattr(installer, "_bin", lambda name: f"/venv/bin/{name}")
-    return InstallConfig(project=tmp_path / "proj", workspace="team", bundle="notes", home=tmp_path / "home")
+    return InstallConfig(project=tmp_path / "proj", workspace="team", home=tmp_path / "home")
 
 
 def test_settings_paths_per_scope(cfg, tmp_path):
@@ -61,17 +61,24 @@ def test_remove_hooks_drops_empty_events():
 def test_hook_command_quotes_args(cfg):
     cfg.workspace = "my ws"
     cmd = installer.hook_command(cfg, "SessionStart", "/v/okf-claude")
-    assert cmd == "/v/okf-claude hook session-start --workspace 'my ws' --bundle notes --recent 5"
+    assert cmd == "/v/okf-claude hook session-start --workspace 'my ws' --recent 5"
     assert installer.hook_command(cfg, "SessionEnd", "/v/okf-claude").endswith("--model haiku")
 
 
 def test_ensure_target_creates_or_refuses(okf_home):
     with pytest.raises(FileNotFoundError):
-        installer.ensure_target("team", "notes", create=False)
-    assert installer.ensure_target("team", "notes", create=True) == [
-        "created workspace 'team'", "created bundle 'notes' in workspace 'team'"]
-    assert installer.ensure_target("team", "notes", create=False) == []
-    assert WorkspaceRegistry().get("team").indexes() == ["notes"]
+        installer.ensure_target("team", create=False)
+    assert installer.ensure_target("team", create=True) == ["created workspace 'team'"]
+    assert installer.ensure_target("team", create=False) == []
+    assert WorkspaceRegistry().exists("team")
+
+
+def test_mcp_add_pins_workspace_by_parameter(cfg):
+    run = FakeRun()
+    installer.register_server(cfg, run)
+    argv = run.calls[1]
+    assert argv[-3:] == ["/venv/bin/okf-mcp", "--workspace", "team"]
+    assert not any("OKF_BUNDLE" in a or "OKF_WORKSPACE" in a for a in argv)
 
 
 def test_install_and_uninstall_roundtrip(cfg):
@@ -82,8 +89,8 @@ def test_install_and_uninstall_roundtrip(cfg):
 
     add = run.calls[1]
     assert add[:6] == ["claude", "mcp", "add", "--scope", "local", "okf"]
-    assert add[6:] == ["-e", "OKF_WORKSPACE=team", "-e", "OKF_BUNDLE=notes",
-                       "-e", "OKF_EMBEDDING_URL=http://localhost:1234/v1", "--", "/venv/bin/okf-mcp"]
+    assert add[6:] == ["-e", "OKF_EMBEDDING_URL=http://localhost:1234/v1", "--", "/venv/bin/okf-mcp",
+                       "--workspace", "team"]
 
     settings = json.loads(cfg.settings_path.read_text())
     assert set(settings["hooks"]) == {"SessionStart", "SessionEnd"}

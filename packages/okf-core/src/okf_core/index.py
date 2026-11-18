@@ -7,6 +7,7 @@ from typing import Callable, overload
 
 from okf_core.constants import INDEX_FILENAME, RESERVED_FILENAMES
 from okf_core.document import OKFDocument
+from okf_core.paths import is_hidden, iter_visible_files
 from okf_core.storage import Storage, open_storage
 from okf_core.synthesizer import fallback_synthesizer
 
@@ -59,7 +60,7 @@ def _read_index_frontmatter(storage: Storage, index_key: str) -> dict:
 def _directories_to_index(storage: Storage) -> list[str]:
     """Directory keys (``""`` = root) that contain a ``.md`` file at any depth."""
     dirs: set[str] = set()
-    for key in storage.iter_files(suffix=".md"):
+    for key in iter_visible_files(storage, suffix=".md"):
         cur = posixpath.dirname(key)
         while True:
             dirs.add(cur)
@@ -122,7 +123,7 @@ def _regenerate(storage: Storage, synthesize: Synthesizer) -> list[str]:
         entries: list[tuple[str, str, str, str, list[str]]] = []
 
         for child in storage.list_dir(directory):
-            if child.name in RESERVED_FILENAMES:
+            if child.name in RESERVED_FILENAMES or is_hidden(child.name):
                 continue
             child_key = posixpath.join(directory, child.name)
             if not child.is_dir and child.name.endswith(".md"):

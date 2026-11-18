@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="packages/okf-web2/brand/logo/lockup-horizontal.png" alt="OK, Fine Memory" width="560">
+  <img src="packages/okf-web/brand/logo/lockup-horizontal.png" alt="OK, Fine Memory" width="560">
 </p>
 
 <p align="center"><b><i>"OK, fine, I'll remember it for you."</i></b></p>
 
 <p align="center">
-  <img src="packages/okf-web2/src/assets/landing/okie-hauling.png" alt="Okie the snail carrying a huge stack of notebooks" width="420">
+  <img src="packages/okf-web/src/assets/landing/okie-hauling.png" alt="Okie the snail carrying a huge stack of notebooks" width="420">
 </p>
 
 ---
@@ -34,14 +34,14 @@ AI helpers keep what your team knows, and I keep it tidy.
 
 <table>
   <tr>
-    <td width="33%" align="center"><img src="packages/okf-web2/src/assets/doodles/okie/okie-writing.png" width="180"><br><b>I write it down</b><br>Tell me once. I put it in a notebook, in the right folder, with a title and some tags.</td>
-    <td width="33%" align="center"><img src="packages/okf-web2/src/assets/doodles/okie/okie-reading.png" width="180"><br><b>I find it again</b><br>Ask me in plain words. I go through every notebook. Slowly. Thoroughly.</td>
-    <td width="33%" align="center"><img src="packages/okf-web2/src/assets/landing/okie-found-it.png" width="180"><br><b>I connect the dots</b><br>Pages link to each other. I also tell you who links <i>back</i>, so nothing gets lonely.</td>
+    <td width="33%" align="center"><img src="packages/okf-web/src/assets/doodles/okie/okie-writing.png" width="180"><br><b>I write it down</b><br>Tell me once. I put it in a notebook, in the right folder, with a title and some tags.</td>
+    <td width="33%" align="center"><img src="packages/okf-web/src/assets/doodles/okie/okie-reading.png" width="180"><br><b>I find it again</b><br>Ask me in plain words. I go through every notebook. Slowly. Thoroughly.</td>
+    <td width="33%" align="center"><img src="packages/okf-web/src/assets/landing/okie-found-it.png" width="180"><br><b>I connect the dots</b><br>Pages link to each other. I also tell you who links <i>back</i>, so nothing gets lonely.</td>
   </tr>
 </table>
 
 <p align="center">
-  <img src="packages/okf-web2/src/assets/landing/okie-helping.png" alt="People handing Okie their notes" width="600"><br>
+  <img src="packages/okf-web/src/assets/landing/okie-helping.png" alt="People handing Okie their notes" width="600"><br>
   <i>Humans in the web app, AI agents through MCP. Everybody hands me notes. I take them all. <code>*sigh*</code></i>
 </p>
 
@@ -51,9 +51,9 @@ AI helpers keep what your team knows, and I keep it tidy.
 
 <img src="docs/images/workspaces.png" alt="Workspaces page" width="100%">
 
-**Notebooks inside a workspace**, plus what I remembered most recently.
+**Inside a workspace**: its folders and pages, plus what I remembered most recently.
 
-<img src="docs/images/workspace.png" alt="A workspace with its notebooks" width="100%">
+<img src="docs/images/workspace.png" alt="A workspace with its folders and pages" width="100%">
 
 **A page.** The explorer on the left is an actual spiral notebook. You can drag pages into folders. I fix the links for you, you're welcome.
 
@@ -65,11 +65,11 @@ AI helpers keep what your team knows, and I keep it tidy.
 
 ## The short list
 
-- 📒 **Notebooks and folders.** Make them, fill them, drag things between them.
+- 📒 **Workspaces and folders.** Make them, fill them, drag things between them.
 - ✏️ **Write in plain markdown.** Titles, tags, tables, links. It's just text files on your disk.
 - 🔗 **Links both ways.** Every page shows what it links to and what links to it.
 - 🔍 **Search in normal words.** Hook up a local embeddings server and ask away. (Without one, I nap.)
-- 🤖 **AI agents can write too.** An MCP server lets Claude and friends add and fix pages in the same notebooks.
+- 🤖 **AI agents can write too.** An MCP server lets Claude and friends add and fix pages in the same workspaces. One server, one workspace; want two, plug in two.
 - 🖍️ **A crayon colour per workspace.** Seven to choose from. Choose wisely.
 - 🌙 **Chalkboard dark mode.** Follows your system, or flip it with ☾.
 - 🏠 **Everything stays on your computer.** No cloud, no account, no tracking. Just me.
@@ -81,11 +81,11 @@ You need [uv](https://docs.astral.sh/uv/) and [Bun](https://bun.sh/).
 ```bash
 git clone https://github.com/hannguyendd/okf-sdk && cd okf-sdk
 uv sync
-cd packages/okf-web2 && bun install && bun run build && cd -
-uv run okf-web --static packages/okf-web2/dist
+cd packages/okf-web && bun install && bun run build && cd -
+uv run okf-backend --static packages/okf-web/dist
 ```
 
-Open **http://127.0.0.1:8765**, make a workspace, make a notebook, write something.
+Open **http://127.0.0.1:8765**, make a workspace, write a page, and watch me file it.
 I'll take it from there.
 
 ## Questions people ask me
@@ -98,8 +98,16 @@ Plain markdown files in `~/.okf/workspaces/`. Open them in any editor, put them 
 I won't be offended. (I'll be a little offended.)
 
 **Can my AI assistant use this?**
-Yes. Plug the MCP server into Claude (or any MCP client) and it can read and write the same notebooks you see.
+Yes. Plug the MCP server into Claude (or any MCP client) and it can read and write the same workspace you see.
 Setup is on [the boring page](docs/TECHNICAL.md#connect-an-ai-agent-mcp).
+
+**I used an older version with bundles. Now what?**
+Bundles are gone: a workspace is the notebook, and folders are just folders.
+Run `uv run okf-migrate-v2 --dry-run`, then `uv run okf-migrate-v2` without the
+dry run, then `okf-claude setup --workspace <ws>` again if Claude uses me.
+Old episodes stay in `<old-bundle>/episodes/` and I still show them at session
+start; new ones go in the workspace-root `episodes/`.
+Details are on [the boring page](docs/TECHNICAL.md#upgrading-from-the-bundle-era).
 
 **Is it safe to put it on the internet?**
 No. There's no login. Keep it on your machine. I'm a homebody.
@@ -112,12 +120,12 @@ You'd be tired too.
 Packages, architecture, MCP setup, search, file layout, tests, design docs:
 👉 **[docs/TECHNICAL.md](docs/TECHNICAL.md)**
 
-There's also the [brand guide](packages/okf-web2/brand/BRAND.md) (yes, I have one) and
+There's also the [brand guide](packages/okf-web/brand/BRAND.md) (yes, I have one) and
 the [OKF conformance rules](packages/okf-core/CONFORMANCE.md), if you're into that.
 
 ---
 
 <p align="center">
-  <img src="packages/okf-web2/src/assets/doodles/okie/okie-wave.png" width="140"><br>
+  <img src="packages/okf-web/src/assets/doodles/okie/okie-wave.png" width="140"><br>
   <sub>Made with crayons and a sigh. Built on the Open Knowledge Format.</sub>
 </p>
