@@ -1,4 +1,4 @@
-"""Starlette HTTP API over ``okf_backend.operations`` for the bundles of a workspace registry."""
+"""Starlette HTTP API over ``okf_backend.operations`` for the workspaces of a registry."""
 
 from __future__ import annotations
 
@@ -18,9 +18,10 @@ from okf_core import (
     RESERVED_STEMS,
     OKFDocument,
     Storage,
-    Workspace,
     WorkspaceRegistry,
 )
+from okf_core.paths import is_hidden
+
 from okf_backend import operations
 
 
@@ -31,7 +32,7 @@ class _Forbidden(Exception):
 def _tree(storage: Storage, dir: str | None) -> dict:
     """One directory level: authored description, child directories, concepts."""
     key = operations._clean_dir(dir)
-    if not storage.is_dir(key):
+    if is_hidden(key) or not storage.is_dir(key):
         raise ValueError(f"directory not found: {key or '/'}")
 
     def description(d: str) -> str | None:
@@ -42,10 +43,11 @@ def _tree(storage: Storage, dir: str | None) -> dict:
 
     directories, concepts = [], []
     for e in sorted(storage.list_dir(key), key=lambda e: e.name):
+        if is_hidden(e.name):
+            continue
         child = posixpath.join(key, e.name)
         if e.is_dir:
-            if not e.name.startswith("."):
-                directories.append({"name": e.name, "dir": child, "description": description(child)})
+            directories.append({"name": e.name, "dir": child, "description": description(child)})
         elif e.name.endswith(".md") and e.name.removesuffix(".md") not in RESERVED_STEMS:
             fm = OKFDocument.parse(storage.read_text(child)).frontmatter
             concepts.append(
@@ -61,7 +63,7 @@ def _tree(storage: Storage, dir: str | None) -> dict:
 
 
 def _overview(storage: Storage, recent: int = 5) -> dict:
-    """At-a-glance stats for one bundle: concept/directory counts, types, latest concepts."""
+    """At-a-glance stats for the workspace: concept/directory counts, types, latest concepts."""
     bundle = Bundle.load(storage)
     concepts = list(bundle)
     types: dict[str, int] = {}
@@ -94,7 +96,7 @@ def _concept_with_backlinks(storage: Storage, concept_id: str) -> dict:
 def _all_dirs(storage: Storage, key: str = "") -> list[str]:
     out: list[str] = []
     for e in storage.list_dir(key):
-        if e.is_dir and not e.name.startswith("."):
+        if e.is_dir and not is_hidden(e.name):
             child = posixpath.join(key, e.name)
             out.append(child)
             out.extend(_all_dirs(storage, child))
@@ -109,9 +111,8 @@ def create_app(
     search_max_chars: int = 6000,
     static_dir: Path | str | None = None,
 ) -> Starlette:
-    """Serve a workspace registry: each bundle (index) is addressed under
-    ``/api/workspaces/{workspace}/indexes/{index}``; search uses the workspace's
-    ``.okf/vectors.db``."""
+    """Serve a workspace registry: each workspace is addressed under
+    ``/api/workspaces/{workspace}``; search uses the workspace's ``.okf/vectors.db``."""
 
     def guard() -> None:
         if read_only:
@@ -155,29 +156,19 @@ def create_app(
             "search_enabled": search_config is not None,
         }
 
-    def bundle_routes(prefix: str, resolve) -> list[Route]:
-        """The per-bundle API; ``resolve(request)`` yields that request's Storage."""
+    def workspace_routes() -> list[Route]:
+        """The per-workspace API; every route targets ``registry.get(ws).storage``."""
+        prefix = "/api/workspaces/{workspace}"
 
-        def workspace(request) -> Workspace:
-            return registry.get(request.path_params["workspace"])
-
-        def bundle_info(request, body):
-            ws, name = workspace(request), request.path_params["index"]
-            ws.bundle_storage(name)  # 404 for an unknown bundle
-            return {"workspace": ws.name, "bundle": name, "description": ws.description(name)}
-
-        def describe_bundle(request, body):
-            ws, name = workspace(request), request.path_params["index"]
-            stored = ws.set_description(name, body["description"])
-            return {"workspace": ws.name, "bundle": name, "description": stored}
+        def resolve(request) -> Storage:
+            return registry.get(request.path_params["workspace"]).storage
 
         def search(request, body):
             return operations.search_workspace(
-                workspace(request),
+                registry.get(request.path_params["workspace"]),
                 q(request, "q", ""),
                 int(q(request, "top_k", 5)),
-                [request.path_params["index"]],
-                q(request, "dir"),
+                request.query_params.getlist("paths") or None,
                 config=search_config,
                 max_chars=search_max_chars,
             )
@@ -244,30 +235,27 @@ def create_app(
             ),
             r("/reindex", lambda rq, b: operations.reindex_bundle(resolve(rq)), ["POST"], write=True),
             r("/search", search, ["GET"]),
-            r("/bundle", bundle_info, ["GET"]),
             r("/overview", lambda rq, b: _overview(resolve(rq)), ["GET"]),
-            r("/bundle/describe", describe_bundle, ["POST"], write=True),
         ]
 
-    def index_storage(request: Request) -> Storage:
-        ws = registry.get(request.path_params["workspace"])
-        return ws.bundle_storage(request.path_params["index"])
-
     def list_workspaces(request, body):
-        return [{"name": w.name, "color": w.color(), "indexes": w.bundles_info()} for w in registry.list()]
+        # One unusable (v1 / corrupt) workspace must not hide the others: it is
+        # listed with its error so the portal can say what to run.
+        rows = []
+        for w in registry.list():
+            try:
+                rows.append({"name": w.name, "color": w.color()})
+            except ValueError as exc:
+                rows.append({"name": w.name, "color": None, "error": str(exc)})
+        return rows
 
     def create_workspace(request, body):
         registry.create(body["name"])
-        return {"name": body["name"], "color": None, "indexes": []}
+        return {"name": body["name"], "color": None}
 
     def set_workspace_color(request, body):
         ws = registry.get(request.path_params["workspace"])
         return {"name": ws.name, "color": ws.set_color(body.get("color"))}
-
-    def create_index(request, body):
-        ws = registry.get(request.path_params["workspace"])
-        result = operations.create_bundle(ws, body["name"], body.get("description"))
-        return {"name": result["bundle"], "description": result["description"]}
 
     routes = [
         Route("/api/info", handler(info)),
@@ -278,13 +266,8 @@ def create_app(
             handler(set_workspace_color, write=True),
             methods=["POST"],
         ),
-        Route(
-            "/api/workspaces/{workspace}/indexes",
-            handler(create_index, write=True, status=201),
-            methods=["POST"],
-        ),
     ]
-    routes += bundle_routes("/api/workspaces/{workspace}/indexes/{index}", index_storage)
+    routes += workspace_routes()
 
     if static_dir is not None:
         root = Path(static_dir).resolve()

@@ -1,4 +1,4 @@
-"""Producer operations over an OKF bundle (framework-agnostic).
+"""Producer operations over an OKF workspace (framework-agnostic).
 
 Every operation takes ``bundle_root`` as a ``Path``, location string, or
 ``okf_core.Storage`` and does all I/O through the storage interface; write
@@ -20,6 +20,7 @@ from okf_core import (
     Storage,
     Workspace,
     extract_link_ids,
+    is_hidden,
     open_storage,
     parse_concept_id,
     regenerate_indexes,
@@ -53,14 +54,14 @@ def _name_of(key: str) -> str:
 
 
 def _clean_dir(dir: str | None) -> str:
-    """Normalize a bundle-relative directory arg to a key; reject escapes."""
+    """Normalize a workspace-relative directory arg to a key; reject escapes."""
     if not dir:
         return ""
     norm = posixpath.normpath(dir)
     if norm == ".":
         return ""
     if norm.startswith("/") or norm == ".." or norm.startswith("../"):
-        raise ValueError(f"dir escapes the bundle root: {dir}")
+        raise ValueError(f"dir escapes the workspace root: {dir}")
     return norm
 
 
@@ -187,7 +188,7 @@ def patch_concept(
 
 
 def reindex_bundle(bundle_root: "Path | str | Storage") -> dict:
-    """Regenerate every ``_index.md`` in the bundle from current content.
+    """Regenerate every ``_index.md`` in the workspace from current content.
 
     Repairs indexes that have drifted (e.g. files edited outside the producer
     tools). This is index maintenance, not a concept change, so it does not
@@ -245,7 +246,7 @@ def read_index(
 ) -> list[dict]:
     """Return ``_index.md`` files for progressive disclosure, breadth-first.
 
-    Starts at ``dir`` (bundle root if omitted) and descends ``depth`` levels
+    Starts at ``dir`` (workspace root if omitted) and descends ``depth`` levels
     (1..3). Missing ``_index.md`` files are skipped; read-only.
     """
     if not isinstance(depth, int) or isinstance(depth, bool) or not 1 <= depth <= 3:
@@ -253,7 +254,7 @@ def read_index(
     storage = open_storage(bundle_root)
     start = _clean_dir(dir)
     results: list[dict] = []
-    level = [start]
+    level = [] if is_hidden(start) else [start]
     for _ in range(depth):
         nxt: list[str] = []
         for d in level:
@@ -270,7 +271,7 @@ def read_index(
                 nxt.extend(
                     posixpath.join(d, e.name)
                     for e in storage.list_dir(d)
-                    if e.is_dir
+                    if e.is_dir and not is_hidden(e.name)
                 )
         level = nxt
         if not level:
@@ -482,8 +483,10 @@ def describe_directory(
     An empty/whitespace ``description`` clears the key (reverting to the
     synthesized contents summary). Reindexes so the value reaches the parent's
     caption, and appends an Update entry to the directory's ``_log.md``. Fails if
-    ``dir`` escapes the bundle root, is not a directory, or has no ``_index.md``
+    ``dir`` escapes the workspace root, is not a directory, or has no ``_index.md``
     (directories only exist once populated, so there is always an index to edit).
+    The root is the exception: a fresh workspace has no root ``_index.md`` yet,
+    so a missing one is treated as empty and created.
     """
     storage = open_storage(bundle_root)
     target = _clean_dir(dir)
@@ -491,10 +494,15 @@ def describe_directory(
         if not storage.is_dir(target):
             raise ValueError(f"directory not found: {dir}")
         index_key = posixpath.join(target, INDEX_FILENAME)
-        if not storage.exists(index_key) or storage.is_dir(index_key):
+        if storage.is_dir(index_key):
+            raise ValueError(f"directory has no {INDEX_FILENAME}: {dir}")
+        if storage.exists(index_key):
+            doc = OKFDocument.parse(storage.read_text(index_key))
+        elif target == "":
+            doc = OKFDocument(frontmatter={}, body="")
+        else:
             raise ValueError(f"directory has no {INDEX_FILENAME}: {dir}")
 
-        doc = OKFDocument.parse(storage.read_text(index_key))
         fm = dict(doc.frontmatter)
         desc = description.strip()
         cleared = not desc
@@ -536,7 +544,7 @@ def create_directory(
     storage = open_storage(bundle_root)
     target = _clean_dir(dir)
     if not target:
-        raise ValueError("dir must name a directory below the bundle root")
+        raise ValueError("dir must name a directory below the workspace root")
     parse_concept_id(target)  # every segment must be a valid id segment
     desc = description.strip()
     with storage.lock():
@@ -575,39 +583,36 @@ def search_workspace(
     workspace: Workspace,
     query: str,
     top_k: int = 5,
-    bundles: list[str] | None = None,
-    dir: str | None = None,
+    paths: list[str] | None = None,
     *,
     config: EmbeddingConfig | None,
     max_chars: int = 6000,
     embed: Embedder | None = None,
     db_path: Path | str | None = None,
 ) -> list[dict]:
-    """Semantic search over the ``_index.md`` files and descriptions of a
-    workspace's bundles (all of them unless ``bundles`` narrows the scope).
+    """Semantic search over the ``_index.md`` files of a workspace.
 
-    Syncs the workspace vector store first (embedding only what changed, and
-    dropping bundles no longer on disk), then returns up to ``top_k`` hits
-    ``{bundle, kind, dir, path, score, excerpt}``, ranked together, best first.
-    ``dir`` needs exactly one bundle in scope. Raises if the embedding server
-    fails; never answers from a store it could not bring up to date.
+    ``paths`` narrows the scope to those directories and everything below them
+    (``None``, empty, or any entry naming the root means the whole workspace;
+    a bare ``str`` is a ``TypeError``). Syncs the workspace vector
+    store first (embedding only what changed), then returns up to ``top_k`` hits
+    ``{kind, dir, path, score, excerpt}``, best first. Raises if the embedding
+    server fails; never answers from a store it could not bring up to date.
     ``db_path`` overrides the workspace's ``.okf/vectors.db`` (tests).
     """
     if not query or not query.strip():
         raise ValueError("query must not be blank")
     if not isinstance(top_k, int) or isinstance(top_k, bool) or not 1 <= top_k <= _MAX_TOP_K:
         raise ValueError(f"top_k must be an integer in 1..{_MAX_TOP_K}")
-    present = workspace.indexes()
-    scope = present if bundles is None else list(dict.fromkeys(bundles))
-    missing = [b for b in scope if b not in present]
-    if missing:
-        raise FileNotFoundError(
-            f"no bundle {missing[0]!r} in workspace {workspace.name!r}; "
-            f"bundles: {', '.join(present) or '(none)'}"
-        )
-    start = _clean_dir(dir)
-    if start and len(scope) != 1:
-        raise ValueError("dir requires exactly one bundle")
+    if paths is not None and not isinstance(paths, (list, tuple)):
+        # A bare str would otherwise be iterated character by character.
+        raise TypeError("paths must be a list of directories")
+    cleaned = [_clean_dir(p) for p in paths or []]
+    # The root ("", ".", "a/..") covers everything: no narrowing at all.
+    scope = [] if "" in cleaned else list(dict.fromkeys(cleaned))
+    for p in scope:
+        if not workspace.storage.is_dir(p):
+            raise FileNotFoundError(f"no directory {p!r} in workspace {workspace.name!r}")
     if config is None:
         raise ValueError(
             "embedding is not configured: set OKF_EMBEDDING_URL and OKF_EMBEDDING_MODEL"
@@ -615,32 +620,7 @@ def search_workspace(
     embedder = embed or (lambda texts: embed_texts(texts, config))
     store = VectorStore(db_path or workspace_db_path(workspace))
     try:
-        store.prune_bundles(set(present))
-        def sync_scope() -> bool:
-            rebuilt = False
-            for name in scope:
-                rebuilt |= store.sync(
-                    workspace.bundle_storage(name),
-                    embedder,
-                    bundle=name,
-                    description=workspace.description(name),
-                    model=config.model,
-                    max_chars=max_chars,
-                )
-            return rebuilt
-
-        if sync_scope():  # a rebuild emptied bundles synced earlier in the loop
-            sync_scope()
-        if not scope:
-            return []
-        return store.query(embedder([query])[0], top_k, bundles=scope, dir=start)
+        store.sync(workspace.storage, embedder, model=config.model, max_chars=max_chars)
+        return store.query(embedder([query])[0], top_k, paths=scope)
     finally:
         store.close()
-
-
-def create_bundle(workspace: Workspace, name: str, description: str | None = None) -> dict:
-    """Create an empty bundle ``name`` in ``workspace`` with an optional
-    description. ``FileExistsError`` if it exists. Its first ``_index.md`` appears
-    with its first concept (indexes only cover directories holding documents)."""
-    workspace.create_index(name, description)
-    return {"bundle": name, "description": workspace.description(name)}

@@ -43,8 +43,8 @@ class Summary:
     tags: list[str] = field(default_factory=list)
 
 
-def bundle_storage(workspace: str, bundle: str) -> Storage:
-    return WorkspaceRegistry().get(workspace).bundle_storage(bundle)
+def workspace_storage(workspace: str) -> Storage:
+    return WorkspaceRegistry().get(workspace).storage
 
 
 def episode_id(session_id: str, started: datetime | None) -> str:
@@ -160,21 +160,12 @@ def write_episode(
     return result
 
 
-def recent_episodes(
-    storage: Storage, *, project: str | None = None, limit: int = 5
-) -> list[dict]:
-    """Newest episodes first: ``[{id, title, description, timestamp, body}]``.
-
-    When ``project`` is given, episodes from that project are returned; episodes
-    from other projects are only used if the project has none.
-    """
-    if limit <= 0 or not storage.is_dir(EPISODE_DIR):
-        return []
+def _scan_episode_dir(storage: Storage, directory: str) -> list[dict]:
     items: list[dict] = []
-    for entry in storage.list_dir(EPISODE_DIR):
+    for entry in storage.list_dir(directory):
         if entry.is_dir or not entry.name.endswith(".md") or entry.name.startswith("_"):
             continue
-        key = f"{EPISODE_DIR}/{entry.name}"
+        key = f"{directory}/{entry.name}"
         try:
             doc = OKFDocument.parse(storage.read_text(key))
         except Exception:
@@ -192,6 +183,47 @@ def recent_episodes(
                 "body": doc.body or "",
             }
         )
+    return items
+
+
+def _legacy_episode_dirs(storage: Storage) -> list[str]:
+    """``<d>/episodes`` for each visible top-level directory ``d``.
+
+    Before bundles were removed, episodes lived inside a bundle; a migrated
+    workspace still has them there. Only that one level is scanned.
+    """
+    dirs: list[str] = []
+    for entry in storage.list_dir(""):
+        if not entry.is_dir or entry.name.startswith((".", "_")) or entry.name == EPISODE_DIR:
+            continue
+        if storage.is_dir(f"{entry.name}/{EPISODE_DIR}"):
+            dirs.append(f"{entry.name}/{EPISODE_DIR}")
+    return dirs
+
+
+def recent_episodes(
+    storage: Storage, *, project: str | None = None, limit: int = 5
+) -> list[dict]:
+    """Newest episodes first: ``[{id, title, description, timestamp, body}]``.
+
+    Reads the root ``episodes/`` plus ``<dir>/episodes/`` of each top-level
+    directory (episodes from before the migration to workspaces). When
+    ``project`` is given, episodes from that project are returned; episodes
+    from other projects are only used if the project has none.
+    """
+    if limit <= 0:
+        return []
+    items: list[dict] = []
+    if storage.is_dir(EPISODE_DIR):
+        items.extend(_scan_episode_dir(storage, EPISODE_DIR))
+    try:
+        for directory in _legacy_episode_dirs(storage):
+            try:
+                items.extend(_scan_episode_dir(storage, directory))
+            except Exception as exc:
+                log(f"skipping legacy episodes in {directory}: {exc}")
+    except Exception as exc:
+        log(f"legacy episode scan failed: {exc}")
     if project:
         mine = [e for e in items if e["project"] == project]
         items = mine or items

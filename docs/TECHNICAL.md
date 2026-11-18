@@ -9,6 +9,7 @@ This is the technical side of **OK, Fine Memory**. The fun version is the
 - [Words we use](#words-we-use)
 - [Run it](#run-it)
 - [Connect an AI agent (MCP)](#connect-an-ai-agent-mcp)
+- [Upgrading from the bundle era](#upgrading-from-the-bundle-era)
 - [Search](#search)
 - [Develop](#develop)
 - [Where things live on disk](#where-things-live-on-disk)
@@ -24,9 +25,9 @@ The root `pyproject.toml` is a virtual workspace root; packages live under `pack
 
 | Package | What it is | Stack |
 |---|---|---|
-| [`okf-core`](../packages/okf-core/) | Library: read, index and validate OKF bundles (`OKFDocument`, `Bundle`, `regenerate_indexes`, `validate_bundle`), workspaces (`WorkspaceRegistry`), and the `Storage` interface. | Python 3.12, PyYAML only |
-| [`okf-backend`](../packages/okf-backend/) | Operations (add, patch, move, delete, describe, mkdir, reindex), semantic search (embeddings + sqlite-vec), settings (`OKF_EMBEDDING_*`), and the REST API (Starlette, CLI `okf-backend`). | Starlette, `pydantic-settings`, sqlite-vec |
-| [`okf-mcp`](../packages/okf-mcp/) | Thin MCP server for agents: its tools call `okf_backend.operations` in-process (stdio or streamable-http). | `mcp` (FastMCP) |
+| [`okf-core`](../packages/okf-core/) | Library: read, index and validate OKF bundles (`OKFDocument`, `Bundle`, `regenerate_indexes`, `validate_bundle`), workspaces (`WorkspaceRegistry`, `Workspace`), `export_subtree`, and the `Storage` interface. | Python 3.12, PyYAML only |
+| [`okf-backend`](../packages/okf-backend/) | Operations (add, patch, move, delete, describe, mkdir, reindex), semantic search (embeddings + sqlite-vec), settings (`OKF_EMBEDDING_*`), the REST API (Starlette, CLI `okf-backend`), and the `okf-migrate-v2` migration. | Starlette, `pydantic-settings`, sqlite-vec |
+| [`okf-mcp`](../packages/okf-mcp/) | Thin MCP server for agents, one workspace per server: its tools call `okf_backend.operations` in-process (stdio or streamable-http). | `mcp` (FastMCP) |
 | [`okf-web`](../packages/okf-web/) | The **Memory portal** (**OK, Fine Memory**): the notebook-doodle UI, consuming the okf-backend REST API and served by `okf-backend --static`. | Vite, React 19, wouter, TanStack Query, Tailwind v4, rough.js |
 | [`okf-claude`](../packages/okf-claude/) | Claude Code integration: `setup`/`uninstall`, session hooks, slash commands. Uses okf-backend for operations and registers the okf-mcp server. | Python 3.12 |
 
@@ -36,13 +37,14 @@ The root `pyproject.toml` is a virtual workspace root; packages live under `pack
 
 | Word | Means |
 |---|---|
+| **Workspace** | A named folder under `$OKF_HOME/workspaces/<name>`: one OKF bundle (the OKF spec's term for the on-disk unit) plus metadata in `.okf/workspace.json`. The portal shows each one as a notebook. |
+| **Node** | A directory or a concept, addressed by a path relative to the workspace root. |
 | **Concept** | One markdown file with YAML frontmatter (`type` is required). One unit of knowledge: a service, a decision, a recipe. |
-| **Bundle** / **index** / **notebook** | A folder of concepts. The UI calls it a notebook; MCP and the API call it a bundle. |
-| **Workspace** | A named folder of bundles under `$OKF_HOME/workspaces/<name>`, with metadata in `.okf/workspace.json`. |
-| **`_index.md`** | The generated *directory listing* in every folder. Regenerated after each write. |
+| **`_index.md`** | The generated *directory listing* in every folder. Regenerated after each write. A directory's authored `description` lives in its frontmatter; the workspace's description is the root `_index.md`'s. |
 | **`_log.md`** | An append-only change log per directory. |
 
-The rules a valid bundle follows are in
+There is nothing between a workspace and its nodes: top-level folders are
+ordinary folders. The rules a valid bundle (a workspace) follows are in
 [`packages/okf-core/CONFORMANCE.md`](../packages/okf-core/CONFORMANCE.md).
 
 ## Run it
@@ -95,12 +97,12 @@ and never under `prefers-reduced-motion`).
 
 ## Connect an AI agent (MCP)
 
-Agents write into the same notebooks you browse. With Claude Code:
+Agents write into the same workspaces you browse. One MCP server serves one
+workspace. With Claude Code:
 
 ```bash
-claude mcp add okf-producer --scope project \
-  --env OKF_WORKSPACE=team \
-  -- /path/to/okf-sdk/.venv/bin/okf-mcp
+claude mcp add okf-team --scope project \
+  -- /path/to/okf-sdk/.venv/bin/okf-mcp --workspace team
 ```
 
 Or in any MCP client config:
@@ -108,27 +110,53 @@ Or in any MCP client config:
 ```json
 {
   "mcpServers": {
-    "okf-producer": {
+    "okf-team": {
       "command": "/path/to/okf-sdk/.venv/bin/okf-mcp",
-      "env": { "OKF_WORKSPACE": "team", "OKF_BUNDLE": "handbook" }
+      "args": ["--workspace", "team"]
     }
   }
 }
 ```
 
-Each tool resolves its workspace and bundle in this order: tool argument >
-`X-OKF-Workspace` / `X-OKF-Bundle` header (HTTP transport) > `OKF_WORKSPACE` /
-`OKF_BUNDLE` env > the choice made earlier in the session > the only candidate,
-or the user is asked. Full details, the HTTP transport and the tool list:
+Over streamable-http (`okf-mcp --transport streamable-http`), the workspace is
+the `X-OKF-Workspace` header, required on every request; `--workspace` is for
+stdio only. There is no workspace argument on any tool and no prompt: an agent
+that needs several workspaces gets several servers. The tools are `add`,
+`patch`, `get`, `list`, `read_index`, `move`, `delete`, `reindex`, `describe`,
+`mkdir` and `search(query, top_k, paths)`. Full details and the tool list:
 [`packages/okf-mcp/README.md`](../packages/okf-mcp/README.md).
+
+To hook Claude Code up in one go (server, session hooks, slash commands), use
+`scripts/setup-claude-code.sh --workspace team` ([`okf-claude`](../packages/okf-claude/README.md)).
+
+## Upgrading from the bundle era
+
+Workspaces made before bundles were removed (`workspace.json` version 1) need a
+one-time migration:
+
+```bash
+uv run okf-migrate-v2 --dry-run          # show what would change; write nothing
+uv run okf-migrate-v2                    # migrate every workspace under $OKF_HOME
+okf-claude setup --workspace <ws>        # re-run in each project that used okf-claude
+```
+
+It rewrites absolute links with the old bundle directory as a prefix, moves
+bundle descriptions into `_index.md`, moves `okf_version` to the root
+`_index.md`, writes `workspace.json` version 2 and drops `vectors.db` (rebuilt
+on the next search). Running it again changes nothing.
+
+Episodes written by okf-claude before the migration stay in `<old-bundle>/episodes/`
+and are still shown at session start. New episodes go to `episodes/` at the
+workspace root.
 
 ## Search
 
-Search is semantic: it embeds each folder's `_index.md` listing and each bundle
-description through a local OpenAI-compatible embeddings server, stored in the
+Search is semantic: it embeds each folder's `_index.md` listing (which carries
+the folder's description) through a local OpenAI-compatible embeddings server, stored in the
 workspace's `.okf/vectors.db` (sqlite-vec) and synced lazily at search time.
 Without `OKF_EMBEDDING_URL` and `OKF_EMBEDDING_MODEL`, search is off and Okie
-naps on the search page.
+naps on the search page. The REST route is `GET /api/workspaces/{ws}/search?paths=`
+(and the MCP tool takes `paths`: directory prefixes to limit the search).
 
 ## Develop
 
@@ -143,8 +171,8 @@ bun run typecheck
 bun run build
 ```
 
-- All bundle file access goes through `okf_core.Storage` (`LocalStorage` by
-  default, `MemoryStorage` in tests). Don't use `pathlib` on bundle files.
+- All workspace file access goes through `okf_core.Storage` (`LocalStorage` by
+  default, `MemoryStorage` in tests). Don't use `pathlib` on workspace files.
 - Tests must set `OKF_HOME` or pass `root=`; never touch the real home folder.
 - Add a Python package under `packages/<name>/` with its own `pyproject.toml`;
   the workspace members glob picks it up.
@@ -173,17 +201,17 @@ How the art is generated: [`packages/okf-web/ASSETS_PROMPT.md`](../packages/okf-
 
 ```
 ~/.okf/workspaces/
-└── team/                        a workspace
+└── team/                        a workspace (one OKF bundle)
     ├── .okf/
-    │   ├── workspace.json       bundle descriptions + the workspace's crayon colour
+    │   ├── workspace.json       {"version": 2, "color"?}: the crayon colour
     │   └── vectors.db           search index
-    └── handbook/                a bundle (notebook)
-        ├── _index.md            generated listing
-        ├── _log.md              change log
-        ├── welcome.md           a concept
-        └── services/
-            ├── _index.md
-            └── payments-api.md
+    ├── _index.md                generated listing (root; carries the workspace description)
+    ├── _log.md                  change log
+    ├── welcome.md               a concept
+    ├── episodes/                e.g. Claude Code session episodes
+    └── services/                an ordinary directory
+        ├── _index.md
+        └── payments-api.md
 ```
 
 Everything is plain markdown. You can open it in any editor, commit it to git,
@@ -198,4 +226,5 @@ or grep it. Okie won't be offended. (Okie will be a little offended.)
 - [Storage interface](superpowers/specs/2026-10-19-okf-storage-interface-design.md)
 - [Vector search](superpowers/specs/2026-10-19-okf-mcp-vector-search-design.md)
 - [Web UI](superpowers/specs/2026-10-25-okf-web-ui-design.md)
-- [Workspace targeting](superpowers/specs/2026-10-26-okf-workspace-targeting-design.md)
+- [Workspace targeting](superpowers/specs/2026-10-26-okf-workspace-targeting-design.md) (superseded)
+- [Remove bundles and package split](superpowers/specs/2026-11-18-okf-remove-bundles-and-package-split-design.md)

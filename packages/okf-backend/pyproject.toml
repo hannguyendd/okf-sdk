@@ -1,7 +1,7 @@
 [project]
 name = "okf-backend"
 version = "0.1.0"
-description = "Shared OKF backend: bundle operations, semantic search, and settings"
+description = "Shared OKF backend: workspace operations, semantic search, the REST API, and settings"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -15,6 +15,7 @@ dependencies = [
 
 [project.scripts]
 okf-backend = "okf_backend.server:main"
+okf-migrate-v2 = "okf_backend.migrate:main"
 
 [build-system]
 requires = ["hatchling"]

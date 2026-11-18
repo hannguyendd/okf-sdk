@@ -3,7 +3,7 @@
 Three pieces, each idempotent (re-running replaces our own entries only):
 
 - the ``okf`` MCP server, registered with ``claude mcp add`` and pinned to a
-  workspace + bundle via ``OKF_WORKSPACE`` / ``OKF_BUNDLE``;
+  workspace via ``okf-mcp --workspace``;
 - SessionStart / SessionEnd hooks in a Claude Code settings file;
 - the ``/okf-remember`` and ``/okf-recall`` slash commands.
 
@@ -39,7 +39,6 @@ Runner = Callable[..., subprocess.CompletedProcess]
 class InstallConfig:
     project: Path
     workspace: str = ""
-    bundle: str = ""
     scope: str = "local"
     model: str = "haiku"
     recent: int = 5
@@ -78,7 +77,7 @@ def _bin(name: str) -> str:
 
 def hook_command(cfg: InstallConfig, event: str, okf_claude: str | None = None) -> str:
     args = [okf_claude or _bin("okf-claude"), "hook", HOOK_EVENTS[event],
-            "--workspace", cfg.workspace, "--bundle", cfg.bundle]
+            "--workspace", cfg.workspace]
     if event == "SessionStart":
         args += ["--recent", str(cfg.recent)]
     else:
@@ -145,28 +144,26 @@ def _save_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
-def ensure_target(workspace: str, bundle: str, *, create: bool) -> list[str]:
-    """Check the workspace and bundle exist; create them when ``create``."""
+def ensure_target(workspace: str, *, create: bool) -> list[str]:
+    """Check the workspace exists and is usable; create it when ``create``.
+
+    A v1 (bundle-era) workspace raises ``ValueError`` pointing to
+    ``okf-migrate-v2`` before anything is installed.
+    """
     registry = WorkspaceRegistry()
     done: list[str] = []
     if not registry.exists(workspace):
         if not create:
-            raise FileNotFoundError(f"no workspace {workspace!r} (pass --create to create it)")
+            raise FileNotFoundError(f"no workspace {workspace!r} (drop --no-create to create it)")
         registry.create(workspace)
         done.append(f"created workspace {workspace!r}")
-    ws = registry.get(workspace)
-    if bundle not in ws.indexes():
-        if not create:
-            raise FileNotFoundError(
-                f"no bundle {bundle!r} in workspace {workspace!r} (pass --create to create it)"
-            )
-        ws.create_index(bundle)
-        done.append(f"created bundle {bundle!r} in workspace {workspace!r}")
+    else:
+        registry.get(workspace)  # raises for a v1 workspace
     return done
 
 
 def register_server(cfg: InstallConfig, run: Runner = subprocess.run) -> str:
-    env = {"OKF_WORKSPACE": cfg.workspace, "OKF_BUNDLE": cfg.bundle, **cfg.server_env}
+    env = dict(cfg.server_env)
     run(
         [cfg.claude_bin, "mcp", "remove", "--scope", cfg.scope, SERVER_NAME],
         cwd=cfg.project, capture_output=True, text=True,
@@ -175,7 +172,7 @@ def register_server(cfg: InstallConfig, run: Runner = subprocess.run) -> str:
     cmd = [cfg.claude_bin, "mcp", "add", "--scope", cfg.scope, SERVER_NAME]
     for key, value in env.items():
         cmd += ["-e", f"{key}={value}"]
-    cmd += ["--", _bin("okf-mcp")]
+    cmd += ["--", _bin("okf-mcp"), "--workspace", cfg.workspace]
     proc = run(cmd, cwd=cfg.project, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(f"`claude mcp add` failed: {(proc.stderr or proc.stdout).strip()}")
@@ -230,7 +227,7 @@ def uninstall_commands(cfg: InstallConfig) -> str:
 def install(
     cfg: InstallConfig, *, create: bool = True, mcp: bool = True, run: Runner = subprocess.run
 ) -> list[str]:
-    done = ensure_target(cfg.workspace, cfg.bundle, create=create)
+    done = ensure_target(cfg.workspace, create=create)
     if mcp:
         done.append(register_server(cfg, run))
     done.append(install_hooks(cfg))

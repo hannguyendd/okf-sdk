@@ -1,7 +1,6 @@
 # OKF memory
 
-This session has long-term memory in the OKF bundle `{{bundle}}` (workspace
-`{{workspace}}`), served by the `okf` MCP server.
+This session has long-term memory in the OKF workspace `{{workspace}}`, served by the `okf` MCP server.
 
 - Before non-trivial work, check what is already known: `mcp__okf__search` for a
   question in plain words (needs embeddings; if it errors, browse with

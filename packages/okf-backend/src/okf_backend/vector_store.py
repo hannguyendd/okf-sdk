@@ -1,5 +1,4 @@
-"""sqlite-vec store for a workspace: one embedding per ``_index.md`` file of each
-bundle, plus one per bundle description (the reserved key ``""``)."""
+"""sqlite-vec store for a workspace: one embedding per ``_index.md`` file."""
 
 from __future__ import annotations
 
@@ -10,12 +9,12 @@ from collections.abc import Callable
 from pathlib import Path
 
 from okf_core import INDEX_FILENAME, METADATA_DIR, OKFDocument, Storage, Workspace
+from okf_core.paths import iter_visible_files
 
 Embedder = Callable[[list[str]], list[list[float]]]
 
 _EXCERPT_CHARS = 200
 _DB_FILENAME = "vectors.db"
-_DESCRIPTION_KEY = ""  # real keys always end in ``_index.md``
 _BUSY_TIMEOUT_MS = 30_000
 
 
@@ -24,7 +23,7 @@ class VectorStoreError(RuntimeError):
 
 
 def workspace_db_path(workspace: Workspace) -> Path:
-    """``<workspace>/.okf/vectors.db`` -- inside the workspace, outside every bundle."""
+    """``<workspace>/.okf/vectors.db`` -- inside the workspace's hidden metadata folder."""
     if workspace.path is None:
         raise VectorStoreError(
             f"workspace {workspace.name!r} is not on local storage; "
@@ -63,12 +62,14 @@ class VectorStore:
             ) from exc
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
+        columns = {r[1] for r in self._conn.execute("PRAGMA table_info(vectors)")}
+        if "root" in columns:  # pre-workspace-is-the-bundle schema: rebuild from scratch
+            self._conn.executescript("DROP TABLE vectors; DROP TABLE IF EXISTS meta;")
         self._conn.executescript(
             "CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);"
             "CREATE TABLE IF NOT EXISTS vectors("
-            " root TEXT NOT NULL, key TEXT NOT NULL, hash TEXT NOT NULL,"
-            " embedding BLOB NOT NULL, excerpt TEXT NOT NULL,"
-            " PRIMARY KEY(root, key));"
+            " key TEXT PRIMARY KEY, hash TEXT NOT NULL,"
+            " embedding BLOB NOT NULL, excerpt TEXT NOT NULL);"
         )
 
     def close(self) -> None:
@@ -86,15 +87,10 @@ class VectorStore:
         storage: Storage,
         embed: Embedder,
         *,
-        bundle: str,
-        description: str | None,
         model: str,
         max_chars: int,
-    ) -> bool:
-        """Make the store's rows for ``bundle`` match its ``_index.md`` files and
-        its description (``None`` removes the description row). Returns whether
-        the whole store was rebuilt (model or dimension change), which empties
-        every *other* bundle's rows too.
+    ) -> None:
+        """Make the store's rows match the ``_index.md`` files of ``storage``.
 
         Embeds only files whose (truncated) text changed, prunes rows for files that
         no longer exist, and rebuilds everything when the model name or the vector
@@ -105,16 +101,12 @@ class VectorStore:
         """
         import sqlite_vec
 
-        root = bundle
         keys = sorted(
             k
-            for k in storage.iter_files(suffix=INDEX_FILENAME)
+            for k in iter_visible_files(storage, suffix=INDEX_FILENAME)
             if posixpath.basename(k) == INDEX_FILENAME
         )
         texts = {k: storage.read_text(k)[:max_chars] for k in keys}
-        if description:
-            keys.insert(0, _DESCRIPTION_KEY)
-            texts[_DESCRIPTION_KEY] = description[:max_chars]
         hashes = {k: hashlib.sha256(t.encode("utf-8")).hexdigest() for k, t in texts.items()}
 
         try:
@@ -123,12 +115,12 @@ class VectorStore:
             existing = (
                 {}
                 if rebuild
-                else dict(self._conn.execute("SELECT key, hash FROM vectors WHERE root=?", (root,)))
+                else dict(self._conn.execute("SELECT key, hash FROM vectors"))
             )
             changed = [k for k in keys if existing.get(k) != hashes[k]]
             gone = set(existing) - set(keys)
             if not changed and not gone and not rebuild and stored_model == model:
-                return False
+                return
 
             vectors = self._embed(embed, [texts[k] for k in changed])
             if vectors and stored_dim is not None and not rebuild and len(vectors[0]) != int(stored_dim):
@@ -147,24 +139,17 @@ class VectorStore:
                     self._conn.execute("DELETE FROM vectors")
                     self._conn.execute("DELETE FROM meta")
                 for k in gone:
-                    self._conn.execute("DELETE FROM vectors WHERE root=? AND key=?", (root, k))
+                    self._conn.execute("DELETE FROM vectors WHERE key=?", (k,))
                 for k, v in zip(changed, vectors):
                     self._conn.execute(
-                        "INSERT OR REPLACE INTO vectors(root, key, hash, embedding, excerpt)"
-                        " VALUES(?, ?, ?, ?, ?)",
-                        (
-                            root,
-                            k,
-                            hashes[k],
-                            sqlite_vec.serialize_float32(v),
-                            texts[k] if k == _DESCRIPTION_KEY else _excerpt(texts[k]),
-                        ),
+                        "INSERT OR REPLACE INTO vectors(key, hash, embedding, excerpt)"
+                        " VALUES(?, ?, ?, ?)",
+                        (k, hashes[k], sqlite_vec.serialize_float32(v), _excerpt(texts[k])),
                     )
                 if vectors:
                     self._set_meta("dim", str(len(vectors[0])))
                 self._set_meta("model", model)
                 self._conn.execute("COMMIT")
-                return rebuild
             except BaseException:
                 if self._conn.in_transaction:
                     self._conn.execute("ROLLBACK")
@@ -184,53 +169,35 @@ class VectorStore:
             )
         return vectors
 
-    def prune_bundles(self, keep: set[str]) -> None:
-        """Delete every row of a bundle not in ``keep`` (e.g. deleted from disk)."""
-        try:
-            stored = {r[0] for r in self._conn.execute("SELECT DISTINCT root FROM vectors")}
-            gone = stored - keep
-            if not gone:
-                return
-            self._conn.execute("BEGIN IMMEDIATE")
-            try:
-                self._conn.executemany("DELETE FROM vectors WHERE root=?", [(g,) for g in gone])
-                self._conn.execute("COMMIT")
-            except BaseException:
-                if self._conn.in_transaction:
-                    self._conn.execute("ROLLBACK")
-                raise
-        except sqlite3.OperationalError as exc:
-            raise VectorStoreError(f"vector database error (is it locked by another process?): {exc}") from exc
-
     def query(
-        self, vector: list[float], top_k: int, *, bundles: list[str], dir: str = ""
+        self, vector: list[float], top_k: int, *, paths: list[str] | None = None
     ) -> list[dict]:
-        """Closest rows of ``bundles`` to ``vector`` (cosine), ranked together, best
-        first. A non-empty ``dir`` keeps only indexes at or below it."""
+        """Closest ``_index.md`` rows to ``vector`` (cosine), best first. A non-empty
+        ``paths`` keeps only indexes at or below any of those directories."""
         import sqlite_vec
 
-        if not bundles:
-            return []
-        prefix = f"{dir}/" if dir else ""
-        marks = ",".join("?" * len(bundles))
+        prefixes = [f"{p}/" for p in dict.fromkeys(paths or []) if p]
+        where = ""
+        params: list = [sqlite_vec.serialize_float32(vector)]
+        if prefixes:
+            where = " WHERE " + " OR ".join("substr(key, 1, ?) = ?" for _ in prefixes)
+            for pre in prefixes:
+                params += [len(pre), pre]
         try:
             rows = self._conn.execute(
-                "SELECT root, key, excerpt, 1 - vec_distance_cosine(embedding, ?) AS score"
-                f" FROM vectors WHERE root IN ({marks}) AND substr(key, 1, ?) = ?"
-                + (" AND key != ''" if dir else "")
-                + " ORDER BY score DESC, root ASC, key ASC LIMIT ?",
-                (sqlite_vec.serialize_float32(vector), *bundles, len(prefix), prefix, top_k),
+                "SELECT key, excerpt, 1 - vec_distance_cosine(embedding, ?) AS score"
+                f" FROM vectors{where} ORDER BY score DESC, key ASC LIMIT ?",
+                (*params, top_k),
             ).fetchall()
         except sqlite3.Error as exc:
             raise VectorStoreError(f"vector query failed: {exc}") from exc
         return [
             {
-                "bundle": root,
-                "kind": "bundle" if key == _DESCRIPTION_KEY else "index",
+                "kind": "index",
                 "dir": posixpath.dirname(key),
-                "path": None if key == _DESCRIPTION_KEY else key,
+                "path": key,
                 "score": float(score),
                 "excerpt": excerpt,
             }
-            for root, key, excerpt, score in rows
+            for key, excerpt, score in rows
         ]

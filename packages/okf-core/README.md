@@ -15,6 +15,13 @@ It can:
   (`validate_bundle`, or `python -m okf_core.validate <bundle>`); see
   [CONFORMANCE.md](CONFORMANCE.md).
 
+A **workspace** (`okf_core.workspace`: `WorkspaceRegistry`, `Workspace`) is one
+OKF bundle under `$OKF_HOME/workspaces/<name>`, plus a hidden `.okf/` folder
+(`workspace.json` is `{"version": 2, "color"?}`). A *node* is a directory or a
+concept, addressed relative to the workspace root; `export_subtree(storage,
+path, dest)` copies a directory out as a standalone bundle and rewrites its
+absolute links.
+
 All file access goes through a `Storage` interface (`okf_core.storage`), so a
 bundle can live somewhere other than a local disk: `Bundle.load`,
 `regenerate_indexes`, and `validate_bundle` accept a path, a `Storage`, or a

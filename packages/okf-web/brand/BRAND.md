@@ -181,7 +181,7 @@ Scale: page title 36 px · section 24 px · body 18 px · small 14 px.
 | Motif | Where |
 |---|---|
 | Lined paper + pink double margin | page background |
-| Spiral notebook with a name label | the explorer; each index is a notebook |
+| Spiral notebook with a name label | the explorer; each workspace is a notebook |
 | Wobbly double outline | cards, header, dialogs |
 | Crayon-filled buttons that wiggle on hover | all actions |
 | Marker highlight / double underline | current item, page titles |

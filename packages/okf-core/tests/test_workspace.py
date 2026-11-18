@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from okf_core import Bundle, MemoryStorage
-from okf_core.workspace import WorkspaceRegistry, okf_home
+from okf_core import MemoryStorage, regenerate_indexes, validate_bundle
+from okf_core.workspace import Workspace, WorkspaceRegistry, okf_home
 
 
 def test_okf_home_explicit_wins(tmp_path: Path, monkeypatch):
@@ -73,152 +73,86 @@ def test_invalid_names_rejected(tmp_path: Path, bad: str):
         reg.create(bad)
     with pytest.raises(ValueError):
         reg.get(bad)
-    ws = reg.create("ok")
-    with pytest.raises(ValueError):
-        ws.create_index(bad)
-    with pytest.raises(ValueError):
-        ws.index_root(bad)
-
-
-def test_indexes_are_visible_top_level_dirs(tmp_path: Path):
-    ws = WorkspaceRegistry(tmp_path).create("w")
-    ws.create_index("zeta")
-    ws.create_index("alpha")
-    (ws.path / ".git").mkdir()
-    (ws.path / "_meta").mkdir()
-    (ws.path / "README.md").write_text("x")
-    assert ws.indexes() == ["alpha", "zeta"]
-
-
-def test_create_index_and_resolve(tmp_path: Path):
-    ws = WorkspaceRegistry(tmp_path).create("w")
-    storage = ws.create_index("docs")
-    p = ws.path / "docs"
-    assert storage.location == str(p) and p.is_dir()
-    assert ws.index_root("docs") == p
-    assert ws.bundle_storage("docs").location == str(p)
-    with pytest.raises(FileNotFoundError):
-        ws.bundle_storage("missing")
-    with pytest.raises(FileExistsError):
-        ws.create_index("docs")
-    with pytest.raises(FileNotFoundError):
-        ws.index_root("missing")
-
-
-def test_load_index_returns_bundle(tmp_path: Path):
-    ws = WorkspaceRegistry(tmp_path).create("w")
-    ws.create_index("docs")
-    (ws.path / "docs" / "a.md").write_text("---\ntype: Note\ntitle: A\n---\nbody\n")
-    bundle = ws.load_index("docs")
-    assert isinstance(bundle, Bundle)
-    assert "a" in bundle
 
 
 def _json(ws) -> Path:
     return ws.path / ".okf" / "workspace.json"
 
 
-def test_description_roundtrip_writes_json(tmp_path: Path):
-    ws = WorkspaceRegistry(tmp_path).create("w")
-    ws.create_index("notes", description="  Team notes  ")
-    assert ws.description("notes") == "Team notes"
-    assert json.loads(_json(ws).read_text()) == {
-        "version": 1,
-        "bundles": {"notes": {"description": "Team notes"}},
-    }
-    assert _json(ws).read_text().endswith("\n")
-
-
-def test_metadata_dir_is_not_an_index(tmp_path: Path):
-    ws = WorkspaceRegistry(tmp_path).create("w")
-    ws.create_index("a", description="x")
-    assert (ws.path / ".okf").is_dir()
-    assert ws.indexes() == ["a"]
-
-
-@pytest.mark.parametrize("cleared", ["  ", "", None])
-def test_set_description_blank_or_none_clears(tmp_path: Path, cleared):
-    ws = WorkspaceRegistry(tmp_path).create("w")
-    ws.create_index("a", description="x")
-    assert ws.set_description("a", cleared) is None
-    assert ws.description("a") is None
-
-
-def test_set_description_too_long_raises(tmp_path: Path):
-    ws = WorkspaceRegistry(tmp_path).create("w")
-    ws.create_index("a")
-    with pytest.raises(ValueError):
-        ws.set_description("a", "x" * 1001)
-    assert ws.set_description("a", "x" * 1000) == "x" * 1000
-
-
-def test_set_description_unknown_bundle_raises(tmp_path: Path):
-    ws = WorkspaceRegistry(tmp_path).create("w")
-    with pytest.raises(FileNotFoundError):
-        ws.set_description("missing", "x")
-
-
-def test_hand_made_bundle_has_null_description_and_can_be_described(tmp_path: Path):
-    ws = WorkspaceRegistry(tmp_path).create("w")
-    (ws.path / "manual").mkdir()
-    assert ws.bundles_info() == [{"name": "manual", "description": None}]
-    ws.set_description("manual", "Hand made")
-    assert ws.bundles_info() == [{"name": "manual", "description": "Hand made"}]
-
-
-def test_stale_entry_hidden_and_pruned_on_write(tmp_path: Path):
-    ws = WorkspaceRegistry(tmp_path).create("w")
-    ws.create_index("a")
-    _json(ws).parent.mkdir()
-    _json(ws).write_text(json.dumps(
-        {"version": 1, "bundles": {"gone": {"description": "old"}, "a": {"description": None}}}
-    ))
-    assert ws.bundles_info() == [{"name": "a", "description": None}]
-    ws.set_description("a", "kept")
-    assert set(json.loads(_json(ws).read_text())["bundles"]) == {"a"}
-
-
-@pytest.mark.parametrize(
-    "text",
-    ["{not json", '{"version": 2, "bundles": {}}', '{"version": 1, "bundles": []}', "[]"],
-)
-def test_corrupt_workspace_json_raises_and_is_not_overwritten(tmp_path: Path, text: str):
-    ws = WorkspaceRegistry(tmp_path).create("w")
-    ws.create_index("a")
-    _json(ws).parent.mkdir()
-    _json(ws).write_text(text)
-    with pytest.raises(ValueError):
-        ws.description("a")
-    with pytest.raises(ValueError):
-        ws.set_description("a", "x")
-    assert _json(ws).read_text() == text
-
-
 def test_workspace_on_memory_storage():
     reg = WorkspaceRegistry(root=MemoryStorage())
     ws = reg.create("w")
-    ws.create_index("b", "d")
     assert [w.name for w in reg.list()] == ["w"]
-    assert ws.bundles_info() == [{"name": "b", "description": "d"}]
     assert ws.path is None
 
 
-def test_create_index_with_invalid_description_creates_nothing(tmp_path: Path):
+def test_v1_workspace_json_points_to_migration(tmp_path: Path):
     ws = WorkspaceRegistry(tmp_path).create("w")
-    with pytest.raises(ValueError):
-        ws.create_index("big", "z" * 1001)
-    assert ws.indexes() == []
-    ws.create_index("big", "short")  # a retry succeeds
-    assert ws.description("big") == "short"
+    ws.storage.write_text(".okf/workspace.json", '{"version": 1, "bundles": {}}')
+    with pytest.raises(ValueError, match="okf-migrate-v2"):
+        ws.color()
 
 
-def test_create_index_with_corrupt_workspace_json_creates_nothing(tmp_path: Path):
+def _make_v1(tmp_path: Path, name: str = "old") -> Path:
+    d = tmp_path / name
+    (d / ".okf").mkdir(parents=True)
+    (d / ".okf" / "workspace.json").write_text('{"version": 1, "bundles": {}}')
+    return d
+
+
+def test_check_raises_for_v1(tmp_path: Path):
+    _make_v1(tmp_path)
+    ws = WorkspaceRegistry(tmp_path).list()[0]
+    with pytest.raises(ValueError, match="okf-migrate-v2"):
+        ws.check()
+    WorkspaceRegistry(tmp_path).create("new").check()  # v2: no error
+
+
+def test_get_refuses_v1_but_list_still_enumerates_it(tmp_path: Path):
+    _make_v1(tmp_path)
+    reg = WorkspaceRegistry(tmp_path)
+    reg.create("new")
+    with pytest.raises(ValueError, match="old.*okf-migrate-v2"):
+        reg.get("old")
+    assert reg.get("new").name == "new"
+    assert [w.name for w in reg.list()] == ["new", "old"]
+    assert reg.exists("old")
+
+
+@pytest.mark.parametrize("text", ["{not json", '{"version": 3}', "[]"])
+def test_corrupt_workspace_json_raises_and_is_not_overwritten(tmp_path: Path, text: str):
     ws = WorkspaceRegistry(tmp_path).create("w")
-    _json(ws).parent.mkdir()
-    _json(ws).write_text("{not json")
+    ws.storage.write_text(".okf/workspace.json", text)
     with pytest.raises(ValueError):
-        ws.create_index("b", "d")
-    assert ws.indexes() == []
+        ws.color()
+    with pytest.raises(ValueError):
+        ws.set_color("pink")
+    assert _json(ws).read_text() == text
+
+
+def test_set_color_writes_v2(tmp_path: Path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    ws.set_color("pink")
+    assert json.loads(ws.storage.read_text(".okf/workspace.json")) == {"version": 2, "color": "pink"}
+
+
+def test_workspace_root_is_the_bundle_and_ignores_metadata(tmp_path: Path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    ws.set_color("blue")
+    ws.storage.write_text(".okf/vectors.db", "x")
+    ws.storage.write_text("notes/a.md", "---\ntype: note\n---\nhi\n")
+    assert [c.id for c in ws.load().concepts] == ["notes/a"]
+    written = regenerate_indexes(ws.storage)
+    assert not any(k.startswith(".okf") for k in written)
+    assert validate_bundle(ws.path) == []
+
+
+def test_bundle_methods_are_gone():
+    for gone in (
+        "indexes", "create_index", "bundle_storage", "index_root",
+        "load_index", "description", "set_description", "bundles_info",
+    ):
+        assert not hasattr(Workspace, gone)
 
 
 def test_color_roundtrip_and_clear(tmp_path: Path):
@@ -226,7 +160,7 @@ def test_color_roundtrip_and_clear(tmp_path: Path):
     assert ws.color() is None
     assert ws.set_color(" green ") == "green"
     assert ws.color() == "green"
-    assert json.loads(_json(ws).read_text()) == {"version": 1, "bundles": {}, "color": "green"}
+    assert json.loads(_json(ws).read_text()) == {"version": 2, "color": "green"}
     assert ws.set_color(None) is None
     assert ws.color() is None
     assert "color" not in json.loads(_json(ws).read_text())
@@ -237,12 +171,45 @@ def test_set_color_rejects_unknown(tmp_path: Path, bad: str):
     ws = WorkspaceRegistry(tmp_path).create("w")
     with pytest.raises(ValueError, match="Invalid color"):
         ws.set_color(bad)
-    assert not _json(ws).exists()
+    assert json.loads(_json(ws).read_text()) == {"version": 2}
 
 
-def test_color_survives_description_writes(tmp_path: Path):
+def test_create_writes_v2_marker(tmp_path: Path):
     ws = WorkspaceRegistry(tmp_path).create("w")
-    ws.set_color("purple")
-    ws.create_index("notes", description="Team notes")
-    assert ws.color() == "purple"
-    assert ws.description("notes") == "Team notes"
+    assert json.loads(_json(ws).read_text()) == {"version": 2}
+    assert ws.color() is None
+
+
+_CONCEPT = "---\ntype: note\ntitle: T\n---\nhi\n"
+
+
+def _hidden_workspace(tmp_path: Path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    ws.set_color("pink")
+    ws.storage.write_text(".okf/vectors.db", "x")
+    ws.storage.write_text(".okf/stray.md", "not a concept")
+    ws.storage.write_text(".git/notes.md", "not a concept")
+    ws.storage.write_text("notes/.cache/c.md", "not a concept")
+    ws.storage.write_text("notes/a.md", _CONCEPT)
+    return ws
+
+
+def test_root_index_never_lists_hidden_dirs(tmp_path: Path):
+    ws = _hidden_workspace(tmp_path)
+    written = regenerate_indexes(ws.storage)
+    assert sorted(written) == ["_index.md", "notes/_index.md"]
+    root = ws.storage.read_text("_index.md")
+    assert ".okf" not in root and ".git" not in root
+    assert ".cache" not in ws.storage.read_text("notes/_index.md")
+
+
+def test_hidden_md_not_loaded_or_validated(tmp_path: Path):
+    ws = _hidden_workspace(tmp_path)
+    assert [c.id for c in ws.load().concepts] == ["notes/a"]
+    regenerate_indexes(ws.storage)
+    assert validate_bundle(ws.path) == []
+
+
+def test_create_writes_v2_marker_on_memory_storage():
+    ws = WorkspaceRegistry(root=MemoryStorage()).create("w")
+    assert json.loads(ws.storage.read_text(".okf/workspace.json")) == {"version": 2}

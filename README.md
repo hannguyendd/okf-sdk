@@ -51,9 +51,9 @@ AI helpers keep what your team knows, and I keep it tidy.
 
 <img src="docs/images/workspaces.png" alt="Workspaces page" width="100%">
 
-**Notebooks inside a workspace**, plus what I remembered most recently.
+**Inside a workspace**: its folders and pages, plus what I remembered most recently.
 
-<img src="docs/images/workspace.png" alt="A workspace with its notebooks" width="100%">
+<img src="docs/images/workspace.png" alt="A workspace with its folders and pages" width="100%">
 
 **A page.** The explorer on the left is an actual spiral notebook. You can drag pages into folders. I fix the links for you, you're welcome.
 
@@ -65,11 +65,11 @@ AI helpers keep what your team knows, and I keep it tidy.
 
 ## The short list
 
-- 📒 **Notebooks and folders.** Make them, fill them, drag things between them.
+- 📒 **Workspaces and folders.** Make them, fill them, drag things between them.
 - ✏️ **Write in plain markdown.** Titles, tags, tables, links. It's just text files on your disk.
 - 🔗 **Links both ways.** Every page shows what it links to and what links to it.
 - 🔍 **Search in normal words.** Hook up a local embeddings server and ask away. (Without one, I nap.)
-- 🤖 **AI agents can write too.** An MCP server lets Claude and friends add and fix pages in the same notebooks.
+- 🤖 **AI agents can write too.** An MCP server lets Claude and friends add and fix pages in the same workspaces. One server, one workspace; want two, plug in two.
 - 🖍️ **A crayon colour per workspace.** Seven to choose from. Choose wisely.
 - 🌙 **Chalkboard dark mode.** Follows your system, or flip it with ☾.
 - 🏠 **Everything stays on your computer.** No cloud, no account, no tracking. Just me.
@@ -85,7 +85,7 @@ cd packages/okf-web && bun install && bun run build && cd -
 uv run okf-backend --static packages/okf-web/dist
 ```
 
-Open **http://127.0.0.1:8765**, make a workspace, make a notebook, write something.
+Open **http://127.0.0.1:8765**, make a workspace, write a page, and watch me file it.
 I'll take it from there.
 
 ## Questions people ask me
@@ -98,8 +98,16 @@ Plain markdown files in `~/.okf/workspaces/`. Open them in any editor, put them 
 I won't be offended. (I'll be a little offended.)
 
 **Can my AI assistant use this?**
-Yes. Plug the MCP server into Claude (or any MCP client) and it can read and write the same notebooks you see.
+Yes. Plug the MCP server into Claude (or any MCP client) and it can read and write the same workspace you see.
 Setup is on [the boring page](docs/TECHNICAL.md#connect-an-ai-agent-mcp).
+
+**I used an older version with bundles. Now what?**
+Bundles are gone: a workspace is the notebook, and folders are just folders.
+Run `uv run okf-migrate-v2 --dry-run`, then `uv run okf-migrate-v2` without the
+dry run, then `okf-claude setup --workspace <ws>` again if Claude uses me.
+Old episodes stay in `<old-bundle>/episodes/` and I still show them at session
+start; new ones go in the workspace-root `episodes/`.
+Details are on [the boring page](docs/TECHNICAL.md#upgrading-from-the-bundle-era).
 
 **Is it safe to put it on the internet?**
 No. There's no login. Keep it on your machine. I'm a homebody.

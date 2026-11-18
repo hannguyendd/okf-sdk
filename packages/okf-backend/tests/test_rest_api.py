@@ -1,4 +1,4 @@
-"""Per-bundle API routes, served under /api/workspaces/{ws}/indexes/{index}."""
+"""Per-workspace API routes, served under /api/workspaces/{ws}."""
 
 import pytest
 from starlette.testclient import TestClient
@@ -7,17 +7,15 @@ from okf_core import MemoryStorage, WorkspaceRegistry
 from okf_backend import operations as ops
 from okf_backend.api import create_app
 
-BASE = "/api/workspaces/w/indexes/b"
+BASE = "/api/workspaces/w"
 
 
 @pytest.fixture
 def storage():
-    """Registry with workspace ``w`` holding bundle ``b`` (plus an empty ``other``)."""
+    """Registry with workspace ``w`` holding a few concepts."""
     reg = WorkspaceRegistry(MemoryStorage())
     ws = reg.create("w")
-    ws.create_index("b", "Billing data")
-    ws.create_index("other")
-    s = ws.bundle_storage("b")
+    s = ws.storage
     ops.add_concept(s, "tables/orders", {"type": "table", "title": "Orders", "tags": ["a"]},
                     "See [users](users.md)\n")
     ops.add_concept(s, "tables/users", {"type": "table", "title": "Users"}, "x")
@@ -26,8 +24,8 @@ def storage():
     return reg
 
 
-class _BundleClient:
-    """TestClient whose ``/api/<route>`` paths (other than ``/api/info``) hit bundle ``w/b``."""
+class _WorkspaceClient:
+    """TestClient whose ``/api/<route>`` paths (other than ``/api/info``) hit workspace ``w``."""
 
     def __init__(self, app):
         self._c = TestClient(app)
@@ -42,7 +40,7 @@ class _BundleClient:
 
 
 def client(registry, **kw):
-    return _BundleClient(create_app(registry, **kw))
+    return _WorkspaceClient(create_app(registry, **kw))
 
 
 def test_info(storage):
@@ -143,17 +141,26 @@ def test_search_uses_embedder(storage, monkeypatch):
 
     seen = {}
 
-    def fake(workspace, query, top_k, bundles, dir, **kw):
-        seen.update(workspace=workspace.name, query=query, top_k=top_k, bundles=bundles, dir=dir)
-        return [{"bundle": "b", "kind": "index", "dir": "tables", "path": "tables/_index.md",
+    def fake(workspace, query, top_k, paths, **kw):
+        seen.update(workspace=workspace.name, query=query, top_k=top_k, paths=paths)
+        return [{"kind": "index", "dir": "tables", "path": "tables/_index.md",
                  "score": 0.9, "excerpt": "x"}]
 
     monkeypatch.setattr(app_mod.operations, "search_workspace", fake)
     c = client(storage, search_config=object())
     assert c.get("/api/info").json()["search_enabled"] is True
-    r = c.get("/api/search", params={"q": "orders", "top_k": 3, "dir": "tables"})
-    assert r.json()[0]["dir"] == "tables" and r.json()[0]["bundle"] == "b"
-    assert seen == {"workspace": "w", "query": "orders", "top_k": 3, "bundles": ["b"], "dir": "tables"}
+    r = c.get("/api/search", params={"q": "orders", "top_k": 3})
+    assert r.json()[0]["dir"] == "tables"
+    assert seen == {"workspace": "w", "query": "orders", "top_k": 3, "paths": None}
+
+
+def test_search_passes_repeated_paths(storage, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        ops, "search_workspace", lambda ws, q, k, paths, **kw: seen.update(paths=paths) or []
+    )
+    client(storage, search_config=object()).get("/api/search?q=x&paths=a&paths=b/c")
+    assert seen["paths"] == ["a", "b/c"]
 
 
 def test_serves_static_index(storage, tmp_path):
@@ -164,22 +171,13 @@ def test_serves_static_index(storage, tmp_path):
     assert c.get("/api/nope").status_code == 404
 
 
-def test_bundle_info_and_describe_sets_and_clears(storage):
-    c = client(storage)
-    assert c.get("/api/bundle").json() == {"workspace": "w", "bundle": "b", "description": "Billing data"}
-    r = c.post("/api/bundle/describe", json={"description": "New"})
-    assert r.json() == {"workspace": "w", "bundle": "b", "description": "New"}
-    assert c.get("/api/bundle").json()["description"] == "New"
-    c.post("/api/bundle/describe", json={"description": None})
-    assert c.get("/api/bundle").json()["description"] is None
-    assert storage.get("w").description("other") is None
+def test_old_index_and_bundle_routes_are_gone(storage):
+    c = TestClient(create_app(storage))
+    assert c.get("/api/workspaces/w/indexes/b/tree").status_code == 404
+    assert c.post("/api/workspaces/w/indexes", json={"name": "x"}).status_code in (404, 405)
+    assert c.get("/api/workspaces/w/bundle").status_code == 404
+    assert c.post("/api/workspaces/w/bundle/describe", json={"description": "x"}).status_code == 404
 
 
-def test_bundle_describe_forbidden_when_read_only(storage):
-    r = client(storage, read_only=True).post("/api/bundle/describe", json={"description": "New"})
-    assert r.status_code == 403
-    assert storage.get("w").description("b") == "Billing data"
-
-
-def test_bundle_describe_too_long_is_400(storage):
-    assert client(storage).post("/api/bundle/describe", json={"description": "x" * 1001}).status_code == 400
+def test_unknown_workspace_is_404(storage):
+    assert TestClient(create_app(storage)).get("/api/workspaces/zzz/tree").status_code == 404
