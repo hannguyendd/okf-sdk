@@ -8,9 +8,7 @@ from okf_backend.api import create_app
 @pytest.fixture
 def registry(tmp_path):
     reg = WorkspaceRegistry(tmp_path / "workspaces")
-    ws = reg.create("work")
-    ws.create_index("notes", "Meeting notes")
-    ws.create_index("docs")
+    reg.create("work")
     reg.create("empty")
     return reg
 
@@ -25,28 +23,21 @@ def test_info_reports_workspace_mode(registry):
     assert info["location"] == registry.storage.location
 
 
-def test_list_workspaces_with_indexes(registry):
+def test_list_workspaces_has_no_indexes(registry):
     r = client(registry).get("/api/workspaces").json()
     assert r == [
-        {"name": "empty", "color": None, "indexes": []},
-        {"name": "work", "color": None, "indexes": [
-            {"name": "docs", "description": None},
-            {"name": "notes", "description": "Meeting notes"},
-        ]},
+        {"name": "empty", "color": None},
+        {"name": "work", "color": None},
     ]
 
 
-def test_create_workspace_and_index(registry):
+def test_create_workspace(registry):
     c = client(registry)
-    assert c.post("/api/workspaces", json={"name": "new"}).status_code == 201
+    r = c.post("/api/workspaces", json={"name": "new"})
+    assert r.status_code == 201 and r.json() == {"name": "new", "color": None}
     assert c.post("/api/workspaces", json={"name": "new"}).status_code == 400  # exists
     assert c.post("/api/workspaces", json={"name": "../x"}).status_code == 400
-    r = c.post("/api/workspaces/new/indexes", json={"name": "mem", "description": "Memory"})
-    assert r.status_code == 201 and r.json() == {"name": "mem", "description": "Memory"}
-    assert c.post("/api/workspaces/new/indexes", json={"name": "mem"}).status_code == 400
-    assert c.post("/api/workspaces/nope/indexes", json={"name": "mem"}).status_code == 404
-    assert c.post("/api/workspaces/new/indexes", json={"name": "big", "description": "x" * 1001}).status_code == 400
-    assert {"name": "new", "color": None, "indexes": [{"name": "mem", "description": "Memory"}]} in c.get("/api/workspaces").json()
+    assert {"name": "new", "color": None} in c.get("/api/workspaces").json()
 
 
 def test_set_workspace_color(registry):
@@ -60,35 +51,36 @@ def test_set_workspace_color(registry):
     assert client(registry, read_only=True).post("/api/workspaces/work/color", json={"color": "red"}).status_code == 403
 
 
-def test_index_scoped_bundle_routes(registry):
+BASE = "/api/workspaces/work"
+
+
+def test_concept_crud_at_workspace_root(registry):
     c = client(registry)
-    base = "/api/workspaces/work/indexes/notes"
-    r = c.post(f"{base}/concepts", json={"concept_id": "ideas/a", "frontmatter": {"type": "note", "title": "A"}, "body": "x"})
+    r = c.post(f"{BASE}/concepts", json={"concept_id": "notes/a", "frontmatter": {"type": "note", "title": "A"}, "body": "x"})
     assert r.status_code == 201
-    assert (registry.get("work").index_root("notes") / "ideas" / "a.md").is_file()
-    assert c.get(f"{base}/concepts/ideas/a").json()["frontmatter"]["title"] == "A"
-    assert [d["name"] for d in c.get(f"{base}/tree").json()["directories"]] == ["ideas"]
-    # a different index is isolated
-    assert c.get("/api/workspaces/work/indexes/docs/tree").json()["directories"] == []
-    assert c.post(f"{base}/reindex").json()["action"] == "reindexed"
+    assert (registry.get("work").path / "notes" / "a.md").is_file()
+    assert c.get(f"{BASE}/concepts/notes/a").json()["id"] == "notes/a"
+    assert [d["name"] for d in c.get(f"{BASE}/tree").json()["directories"]] == ["notes"]
+    # another workspace is isolated
+    assert c.get("/api/workspaces/empty/tree").json()["directories"] == []
+    assert c.post(f"{BASE}/reindex").json()["action"] == "reindexed"
+    assert c.get(f"{BASE}/indexes/b/tree").status_code == 404
 
 
-def test_unknown_index_is_404(registry):
-    assert client(registry).get("/api/workspaces/work/indexes/zzz/tree").status_code == 404
-    assert client(registry).get("/api/workspaces/zzz/indexes/notes/tree").status_code == 404
+def test_unknown_workspace_is_404(registry):
+    assert client(registry).get("/api/workspaces/zzz/tree").status_code == 404
 
 
 def test_read_only_blocks_workspace_writes(registry):
     c = client(registry, read_only=True)
     assert c.post("/api/workspaces", json={"name": "n"}).status_code == 403
-    assert c.post("/api/workspaces/work/indexes", json={"name": "n"}).status_code == 403
-    assert c.post("/api/workspaces/work/indexes/notes/reindex").status_code == 403
+    assert c.post(f"{BASE}/reindex").status_code == 403
     assert c.get("/api/workspaces").status_code == 200
 
 
 def test_create_directory_route(registry):
     c = client(registry)
-    base = "/api/workspaces/work/indexes/notes"
+    base = BASE
     r = c.post(f"{base}/dirs", json={"dir": "guides", "description": "How-tos"})
     assert r.status_code == 201 and r.json()["dir"] == "guides"
     tree = c.get(f"{base}/tree").json()
@@ -100,7 +92,7 @@ def test_create_directory_route(registry):
 
 def test_index_overview(registry):
     c = client(registry)
-    base = "/api/workspaces/work/indexes/notes"
+    base = BASE
     assert c.get(f"{base}/overview").json() == {"concepts": 0, "directories": 0, "types": {}, "recent": []}
     for cid, typ in [("ideas/a", "Note"), ("ideas/b", "Note"), ("plan", "Playbook")]:
         c.post(f"{base}/concepts", json={"concept_id": cid, "frontmatter": {"type": typ, "title": cid}, "body": "x"})
@@ -114,7 +106,7 @@ def test_index_overview(registry):
 
 def test_list_dirs_and_backlinks(registry):
     c = client(registry)
-    base = "/api/workspaces/work/indexes/notes"
+    base = BASE
     c.post(f"{base}/concepts", json={"concept_id": "a/x", "frontmatter": {"type": "Note"}, "body": "see [y](../b/y.md)"})
     c.post(f"{base}/concepts", json={"concept_id": "b/y", "frontmatter": {"type": "Note"}, "body": "plain"})
     c.post(f"{base}/dirs", json={"dir": "a/deeper"})
