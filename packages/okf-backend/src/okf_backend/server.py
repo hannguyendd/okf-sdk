@@ -7,7 +7,7 @@ from pathlib import Path
 
 from okf_core import WorkspaceRegistry
 
-from okf_backend.api import create_app
+from okf_backend.api import LOOPBACK_HOSTS, create_app
 from okf_backend.settings import BackendSettings
 
 
@@ -42,7 +42,15 @@ def build_app(args: argparse.Namespace):
         search_config=settings.embedding_config(),
         search_max_chars=settings.embedding_max_chars,
         static_dir=_static_dir(args.static),
+        allowed_hosts=_allowed_hosts(args.host),
     )
+
+
+def _allowed_hosts(bind: str) -> frozenset[str] | None:
+    """Loopback names plus the bind address; ``None`` (no Host check) when bound to all interfaces."""
+    if bind in ("0.0.0.0", "::", ""):
+        return None
+    return LOOPBACK_HOSTS | {bind.strip("[]").lower()}
 
 
 def main() -> None:

@@ -5,9 +5,12 @@ from __future__ import annotations
 import asyncio
 import posixpath
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from starlette.applications import Starlette
+from starlette.datastructures import Headers
 from starlette.exceptions import HTTPException
+from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
@@ -27,6 +30,59 @@ from okf_backend import operations
 
 class _Forbidden(Exception):
     pass
+
+
+class _UnsupportedMediaType(Exception):
+    pass
+
+
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def _hostname(host: str) -> str:
+    """``Host`` header value without its port (``[::1]:8765`` -> ``::1``)."""
+    host = host.strip().lower()
+    if host.startswith("["):
+        return host[1 : host.find("]")] if "]" in host else host
+    return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+
+
+class _LocalOnly:
+    """Refuse ``/api`` requests that a web page in the user's browser could forge.
+
+    The API has no auth, so any site the user visits could otherwise write to it:
+    - ``Host`` must be an allowed name (blocks DNS rebinding); skipped when
+      ``allowed_hosts`` is ``None``.
+    - Writes must not be cross-site: ``Sec-Fetch-Site: cross-site`` or an
+      ``Origin`` that differs from ``Host`` is refused. Clients that send no
+      ``Origin`` (curl, scripts) are allowed.
+    """
+
+    def __init__(self, app, allowed_hosts: frozenset[str] | None) -> None:
+        self.app = app
+        self.allowed_hosts = allowed_hosts
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] == "http" and scope["path"].startswith("/api/"):
+            reason = self._refusal(Headers(scope=scope), scope["method"])
+            if reason:
+                await JSONResponse({"error": reason}, status_code=403)(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+    def _refusal(self, headers: Headers, method: str) -> str | None:
+        host = headers.get("host", "")
+        if self.allowed_hosts is not None and _hostname(host) not in self.allowed_hosts:
+            return f"host not allowed: {host or '(none)'}"
+        if method in _SAFE_METHODS:
+            return None
+        if headers.get("sec-fetch-site") == "cross-site":
+            return "cross-site request refused"
+        origin = headers.get("origin")
+        if origin is not None and (origin == "null" or urlsplit(origin).netloc.lower() != host.lower()):
+            return f"cross-origin request refused: {origin}"
+        return None
 
 
 def _tree(storage: Storage, dir: str | None) -> dict:
@@ -110,9 +166,14 @@ def create_app(
     search_config=None,
     search_max_chars: int = 6000,
     static_dir: Path | str | None = None,
+    allowed_hosts: frozenset[str] | None = None,
 ) -> Starlette:
     """Serve a workspace registry: each workspace is addressed under
-    ``/api/workspaces/{workspace}``; search uses the workspace's ``.okf/vectors.db``."""
+    ``/api/workspaces/{workspace}``; search uses the workspace's ``.okf/vectors.db``.
+
+    Cross-site writes are always refused; ``allowed_hosts`` (e.g.
+    ``LOOPBACK_HOSTS``) also restricts the ``Host`` header, which ``okf-backend``
+    always sets. Write bodies must be ``application/json``."""
 
     def guard() -> None:
         if read_only:
@@ -127,11 +188,16 @@ def create_app(
                 if request.method in ("POST", "PATCH"):
                     raw = await request.body()
                     if raw:
+                        media = request.headers.get("content-type", "").split(";")[0].strip().lower()
+                        if media != "application/json":
+                            raise _UnsupportedMediaType("request body must be application/json")
                         body = await request.json()
                 result = await asyncio.to_thread(fn, request, body)
                 return JSONResponse(result, status_code=status)
             except _Forbidden as e:
                 return JSONResponse({"error": str(e)}, status_code=403)
+            except _UnsupportedMediaType as e:
+                return JSONResponse({"error": str(e)}, status_code=415)
             except FileNotFoundError as e:
                 return JSONResponse({"error": f"not found: {e}"}, status_code=404)
             except FileExistsError as e:
@@ -283,4 +349,6 @@ def create_app(
 
         routes.append(Route("/{path:path}", spa))
 
-    return Starlette(routes=routes)
+    return Starlette(
+        routes=routes, middleware=[Middleware(_LocalOnly, allowed_hosts=allowed_hosts)]
+    )
