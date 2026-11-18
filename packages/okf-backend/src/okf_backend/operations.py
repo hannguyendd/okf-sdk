@@ -575,39 +575,30 @@ def search_workspace(
     workspace: Workspace,
     query: str,
     top_k: int = 5,
-    bundles: list[str] | None = None,
-    dir: str | None = None,
+    paths: list[str] | None = None,
     *,
     config: EmbeddingConfig | None,
     max_chars: int = 6000,
     embed: Embedder | None = None,
     db_path: Path | str | None = None,
 ) -> list[dict]:
-    """Semantic search over the ``_index.md`` files and descriptions of a
-    workspace's bundles (all of them unless ``bundles`` narrows the scope).
+    """Semantic search over the ``_index.md`` files of a workspace.
 
-    Syncs the workspace vector store first (embedding only what changed, and
-    dropping bundles no longer on disk), then returns up to ``top_k`` hits
-    ``{bundle, kind, dir, path, score, excerpt}``, ranked together, best first.
-    ``dir`` needs exactly one bundle in scope. Raises if the embedding server
-    fails; never answers from a store it could not bring up to date.
+    ``paths`` narrows the scope to those directories and everything below them
+    (``None`` or empty means the whole workspace). Syncs the workspace vector
+    store first (embedding only what changed), then returns up to ``top_k`` hits
+    ``{kind, dir, path, score, excerpt}``, best first. Raises if the embedding
+    server fails; never answers from a store it could not bring up to date.
     ``db_path`` overrides the workspace's ``.okf/vectors.db`` (tests).
     """
     if not query or not query.strip():
         raise ValueError("query must not be blank")
     if not isinstance(top_k, int) or isinstance(top_k, bool) or not 1 <= top_k <= _MAX_TOP_K:
         raise ValueError(f"top_k must be an integer in 1..{_MAX_TOP_K}")
-    present = workspace.indexes()
-    scope = present if bundles is None else list(dict.fromkeys(bundles))
-    missing = [b for b in scope if b not in present]
-    if missing:
-        raise FileNotFoundError(
-            f"no bundle {missing[0]!r} in workspace {workspace.name!r}; "
-            f"bundles: {', '.join(present) or '(none)'}"
-        )
-    start = _clean_dir(dir)
-    if start and len(scope) != 1:
-        raise ValueError("dir requires exactly one bundle")
+    scope = list(dict.fromkeys(p for p in (_clean_dir(p) for p in paths or []) if p))
+    for p in scope:
+        if not workspace.storage.is_dir(p):
+            raise FileNotFoundError(f"no directory {p!r} in workspace {workspace.name!r}")
     if config is None:
         raise ValueError(
             "embedding is not configured: set OKF_EMBEDDING_URL and OKF_EMBEDDING_MODEL"
@@ -615,32 +606,7 @@ def search_workspace(
     embedder = embed or (lambda texts: embed_texts(texts, config))
     store = VectorStore(db_path or workspace_db_path(workspace))
     try:
-        store.prune_bundles(set(present))
-        def sync_scope() -> bool:
-            rebuilt = False
-            for name in scope:
-                rebuilt |= store.sync(
-                    workspace.bundle_storage(name),
-                    embedder,
-                    bundle=name,
-                    description=workspace.description(name),
-                    model=config.model,
-                    max_chars=max_chars,
-                )
-            return rebuilt
-
-        if sync_scope():  # a rebuild emptied bundles synced earlier in the loop
-            sync_scope()
-        if not scope:
-            return []
-        return store.query(embedder([query])[0], top_k, bundles=scope, dir=start)
+        store.sync(workspace.storage, embedder, model=config.model, max_chars=max_chars)
+        return store.query(embedder([query])[0], top_k, paths=scope)
     finally:
         store.close()
-
-
-def create_bundle(workspace: Workspace, name: str, description: str | None = None) -> dict:
-    """Create an empty bundle ``name`` in ``workspace`` with an optional
-    description. ``FileExistsError`` if it exists. Its first ``_index.md`` appears
-    with its first concept (indexes only cover directories holding documents)."""
-    workspace.create_index(name, description)
-    return {"bundle": name, "description": workspace.description(name)}
