@@ -105,6 +105,8 @@ Setup is on [the boring page](docs/TECHNICAL.md#connect-an-ai-agent-mcp).
 Bundles are gone: a workspace is the notebook, and folders are just folders.
 Run `uv run okf-migrate-v2 --dry-run`, then `uv run okf-migrate-v2` without the
 dry run, then `okf-claude setup --workspace <ws>` again if Claude uses me.
+Old episodes stay in `<old-bundle>/episodes/` and I still show them at session
+start; new ones go in the workspace-root `episodes/`.
 Details are on [the boring page](docs/TECHNICAL.md#upgrading-from-the-bundle-era).
 
 **Is it safe to put it on the internet?**

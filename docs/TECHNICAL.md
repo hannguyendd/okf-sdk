@@ -145,6 +145,10 @@ bundle descriptions into `_index.md`, moves `okf_version` to the root
 `_index.md`, writes `workspace.json` version 2 and drops `vectors.db` (rebuilt
 on the next search). Running it again changes nothing.
 
+Episodes written by okf-claude before the migration stay in `<old-bundle>/episodes/`
+and are still shown at session start. New episodes go to `episodes/` at the
+workspace root.
+
 ## Search
 
 Search is semantic: it embeds each folder's `_index.md` listing (which carries

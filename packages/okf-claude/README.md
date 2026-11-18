@@ -40,9 +40,11 @@ Re-running replaces only its own entries. Restart Claude Code afterwards.
 Upgrading from the bundle era (before `--bundle` was removed)? Run
 `uv run okf-migrate-v2 --dry-run`, then `uv run okf-migrate-v2`, then
 `okf-claude setup --workspace <ws>` again. Episodes written before migrating
-stay under their old bundle directory (for example `<bundle>/episodes/`); new
-ones go to `episodes/` at the workspace root. Old hooks that still pass `--bundle` are ignored and logged, so they do
-not break a session until you re-run setup.
+stay under their old bundle directory (`<bundle>/episodes/`) and are still
+shown at session start (SessionStart also reads `<dir>/episodes/` of each
+top-level directory); new ones go to `episodes/` at the workspace root. Old
+hooks that still pass `--bundle` are ignored and logged, so they do not break a
+session until you re-run setup.
 
 Remove everything with `uv run okf-claude uninstall --project ~/code/myproject`
 (same `--scope`). Episodes already written stay in the workspace.

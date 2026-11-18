@@ -87,3 +87,29 @@ def test_episode_written_at_workspace_root(storage):
     ws_storage = episodes.workspace_storage("team")
     assert r["concept_id"] == "episodes/2026-11-13-abcdef12"
     assert ws_storage.exists("episodes/2026-11-13-abcdef12.md")
+
+
+def _put_episode(storage, key, title, timestamp):
+    storage.write_text(
+        key,
+        "---\ntype: episode\ntitle: %s\ntimestamp: '%s'\n---\nbody\n" % (title, timestamp),
+    )
+
+
+def test_recent_episodes_includes_pre_migration_dirs(storage):
+    _put_episode(storage, "notes/episodes/2026-11-01-old1.md", "Old1", "2026-11-01T00:00:00Z")
+    _put_episode(storage, "notes/episodes/2026-11-03-old2.md", "Old2", "2026-11-03T00:00:00Z")
+    _put_episode(storage, "episodes/2026-11-05-new1.md", "New1", "2026-11-05T00:00:00Z")
+    _put_episode(storage, "episodes/2026-11-02-new2.md", "New2", "2026-11-02T00:00:00Z")
+    got = episodes.recent_episodes(storage, limit=10)
+    assert [e["title"] for e in got] == ["New1", "Old2", "New2", "Old1"]
+    assert got[1]["id"] == "notes/episodes/2026-11-03-old2"
+    assert [e["title"] for e in episodes.recent_episodes(storage, limit=3)] == ["New1", "Old2", "New2"]
+
+
+def test_recent_episodes_top_level_dir_without_episodes_is_fine(storage):
+    storage.write_text("notes/a.md", "---\ntype: note\n---\nx")
+    storage.write_text("_hidden/episodes/x.md", "---\ntype: episode\n---\nx")
+    assert episodes.recent_episodes(storage) == []
+    _put_episode(storage, "episodes/2026-11-05-new1.md", "New1", "2026-11-05T00:00:00Z")
+    assert [e["title"] for e in episodes.recent_episodes(storage)] == ["New1"]
