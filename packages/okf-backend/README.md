@@ -21,6 +21,13 @@ uv run okf-backend [--read-only] [--host 127.0.0.1] [--port 8765] [--static DIR]
 is no auth: it binds to 127.0.0.1 by default, so keep it local. `OKF_HOME`
 (default `~/.okf`) says where workspaces live.
 
+Because there is no auth, the API refuses requests a web page could forge:
+the `Host` header must be a loopback name or the `--host` address (this blocks
+DNS rebinding; bind to `0.0.0.0` to turn the check off). Writes are refused
+when cross-site (`Origin` differs from `Host`, or `Sec-Fetch-Site: cross-site`).
+Write bodies must be `application/json`. curl and scripts that send no `Origin`
+header still work.
+
 ## Migrate from the bundle era
 
 Workspaces made before bundles were removed (version 1) are upgraded in place
