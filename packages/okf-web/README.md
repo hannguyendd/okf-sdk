@@ -1,22 +1,22 @@
-# okf-web2: OK, Fine Memory
+# okf-web: OK, Fine Memory
 
 > OK, fine, I’ll remember it for you.
 
 The kid's-notebook web UI for OKF workspaces. It talks to the HTTP API of
-[`okf-web`](../okf-web/) (Python), so run that as the backend. Brand, voice and
+`okf-backend` (Python, `packages/okf-backend`), so run that as the backend. Brand, voice and
 style live in [`brand/BRAND.md`](brand/BRAND.md).
 
 ## Run
 
 ```bash
 # backend (from the repo root): serves the API on 127.0.0.1:8765
-uv run okf-web
+uv run okf-backend
 
 # frontend dev server with HMR, proxies /api to the backend
-cd packages/okf-web2 && bun install && bun run dev      # http://localhost:5173
+cd packages/okf-web && bun install && bun run dev      # http://localhost:5173
 
-# or build once and let okf-web serve it
-bun run build && uv run okf-web --static packages/okf-web2/dist
+# or build once and let okf-backend serve it
+bun run build && uv run okf-backend --static packages/okf-web/dist
 ```
 
 `OKF_API=http://127.0.0.1:8766 bun run dev` points the dev proxy at another
@@ -24,7 +24,7 @@ backend (e.g. a slow proxy for checking loading states).
 
 There are two pages: the app (`index.html`) and the landing page
 (`landing.html`, code in `src/landing/`). In dev open
-`http://localhost:5173/landing.html`; once built, `okf-web --static` serves it
+`http://localhost:5173/landing.html`; once built, `okf-backend --static` serves it
 at `/landing.html`. Add `?intro` to the app URL to replay the opening animation.
 
 ## Stack

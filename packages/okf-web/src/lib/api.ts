@@ -1,4 +1,4 @@
-/** Typed client for the okf-web HTTP API (`packages/okf-web/src/okf_web/app.py`). */
+/** Typed client for the okf-backend HTTP API (`packages/okf-backend/src/okf_backend/api.py`). */
 
 export interface Info { mode: "workspace"; location: string; read_only: boolean; search_enabled: boolean }
 export interface IndexInfo { name: string; description: string | null }

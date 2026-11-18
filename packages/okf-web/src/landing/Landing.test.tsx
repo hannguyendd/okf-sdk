@@ -33,7 +33,7 @@ describe("landing page", () => {
     render(<Landing />);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("OK, fine. I’ll remember it for you.");
     expect(screen.getByRole("heading", { name: "Wake Okie up (about 2 minutes)" })).toBeInTheDocument();
-    expect(screen.getByText(/uv run okf-web --static packages\/okf-web2\/dist/)).toBeInTheDocument();
+    expect(screen.getByText(/uv run okf-backend --static packages\/okf-web\/dist/)).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Wake Okie up" })[0]).toHaveAttribute("href", "#start");
   });
 

@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "okf-web2",
+      "name": "okf-web",
       "dependencies": {
         "@fontsource/mali": "^5.3.0",
         "@fontsource/patrick-hand": "^5.3.0",

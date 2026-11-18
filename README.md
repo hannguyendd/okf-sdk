@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="packages/okf-web2/brand/logo/lockup-horizontal.png" alt="OK, Fine Memory" width="560">
+  <img src="packages/okf-web/brand/logo/lockup-horizontal.png" alt="OK, Fine Memory" width="560">
 </p>
 
 <p align="center"><b><i>"OK, fine, I'll remember it for you."</i></b></p>
 
 <p align="center">
-  <img src="packages/okf-web2/src/assets/landing/okie-hauling.png" alt="Okie the snail carrying a huge stack of notebooks" width="420">
+  <img src="packages/okf-web/src/assets/landing/okie-hauling.png" alt="Okie the snail carrying a huge stack of notebooks" width="420">
 </p>
 
 ---
@@ -34,14 +34,14 @@ AI helpers keep what your team knows, and I keep it tidy.
 
 <table>
   <tr>
-    <td width="33%" align="center"><img src="packages/okf-web2/src/assets/doodles/okie/okie-writing.png" width="180"><br><b>I write it down</b><br>Tell me once. I put it in a notebook, in the right folder, with a title and some tags.</td>
-    <td width="33%" align="center"><img src="packages/okf-web2/src/assets/doodles/okie/okie-reading.png" width="180"><br><b>I find it again</b><br>Ask me in plain words. I go through every notebook. Slowly. Thoroughly.</td>
-    <td width="33%" align="center"><img src="packages/okf-web2/src/assets/landing/okie-found-it.png" width="180"><br><b>I connect the dots</b><br>Pages link to each other. I also tell you who links <i>back</i>, so nothing gets lonely.</td>
+    <td width="33%" align="center"><img src="packages/okf-web/src/assets/doodles/okie/okie-writing.png" width="180"><br><b>I write it down</b><br>Tell me once. I put it in a notebook, in the right folder, with a title and some tags.</td>
+    <td width="33%" align="center"><img src="packages/okf-web/src/assets/doodles/okie/okie-reading.png" width="180"><br><b>I find it again</b><br>Ask me in plain words. I go through every notebook. Slowly. Thoroughly.</td>
+    <td width="33%" align="center"><img src="packages/okf-web/src/assets/landing/okie-found-it.png" width="180"><br><b>I connect the dots</b><br>Pages link to each other. I also tell you who links <i>back</i>, so nothing gets lonely.</td>
   </tr>
 </table>
 
 <p align="center">
-  <img src="packages/okf-web2/src/assets/landing/okie-helping.png" alt="People handing Okie their notes" width="600"><br>
+  <img src="packages/okf-web/src/assets/landing/okie-helping.png" alt="People handing Okie their notes" width="600"><br>
   <i>Humans in the web app, AI agents through MCP. Everybody hands me notes. I take them all. <code>*sigh*</code></i>
 </p>
 
@@ -81,8 +81,8 @@ You need [uv](https://docs.astral.sh/uv/) and [Bun](https://bun.sh/).
 ```bash
 git clone https://github.com/hannguyendd/okf-sdk && cd okf-sdk
 uv sync
-cd packages/okf-web2 && bun install && bun run build && cd -
-uv run okf-web --static packages/okf-web2/dist
+cd packages/okf-web && bun install && bun run build && cd -
+uv run okf-backend --static packages/okf-web/dist
 ```
 
 Open **http://127.0.0.1:8765**, make a workspace, make a notebook, write something.
@@ -112,12 +112,12 @@ You'd be tired too.
 Packages, architecture, MCP setup, search, file layout, tests, design docs:
 👉 **[docs/TECHNICAL.md](docs/TECHNICAL.md)**
 
-There's also the [brand guide](packages/okf-web2/brand/BRAND.md) (yes, I have one) and
+There's also the [brand guide](packages/okf-web/brand/BRAND.md) (yes, I have one) and
 the [OKF conformance rules](packages/okf-core/CONFORMANCE.md), if you're into that.
 
 ---
 
 <p align="center">
-  <img src="packages/okf-web2/src/assets/doodles/okie/okie-wave.png" width="140"><br>
+  <img src="packages/okf-web/src/assets/doodles/okie/okie-wave.png" width="140"><br>
   <sub>Made with crayons and a sigh. Built on the Open Knowledge Format.</sub>
 </p>

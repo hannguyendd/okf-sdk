@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
-// Dev: `uv run okf-web` serves the API on 8765; Vite proxies /api to it.
+// Dev: `uv run okf-backend` serves the API on 8765; Vite proxies /api to it.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   // OKF_API overrides the backend, e.g. to point at a slow proxy when testing loading states.

@@ -25,11 +25,12 @@ The root `pyproject.toml` is a virtual workspace root; packages live under `pack
 | Package | What it is | Stack |
 |---|---|---|
 | [`okf-core`](../packages/okf-core/) | Library: read, index and validate OKF bundles (`OKFDocument`, `Bundle`, `regenerate_indexes`, `validate_bundle`), workspaces (`WorkspaceRegistry`), and the `Storage` interface. | Python 3.12, PyYAML only |
-| [`okf-mcp`](../packages/okf-mcp/) | MCP server for agents: add, patch, move, delete, get and list concepts; describe directories; reindex; create and describe bundles; semantic search. | `mcp` (FastMCP), `pydantic-settings` |
-| [`okf-web`](../packages/okf-web/) | Local HTTP API (Starlette) over `okf_mcp.operations`, plus the original React UI. | Starlette, React, Bun |
-| [`okf-web2`](../packages/okf-web2/) | **OK, Fine Memory**: the notebook-doodle UI, served by `okf-web --static`. | Vite, React 19, wouter, TanStack Query, Tailwind v4, rough.js |
+| [`okf-backend`](../packages/okf-backend/) | Operations (add, patch, move, delete, describe, mkdir, reindex), semantic search (embeddings + sqlite-vec), settings (`OKF_EMBEDDING_*`), and the REST API (Starlette, CLI `okf-backend`). | Starlette, `pydantic-settings`, sqlite-vec |
+| [`okf-mcp`](../packages/okf-mcp/) | Thin MCP server for agents: its tools call `okf_backend.operations` in-process (stdio or streamable-http). | `mcp` (FastMCP) |
+| [`okf-web`](../packages/okf-web/) | The **Memory portal** (**OK, Fine Memory**): the notebook-doodle UI, consuming the okf-backend REST API and served by `okf-backend --static`. | Vite, React 19, wouter, TanStack Query, Tailwind v4, rough.js |
+| [`okf-claude`](../packages/okf-claude/) | Claude Code integration: `setup`/`uninstall`, session hooks, slash commands. Uses okf-backend for operations and registers the okf-mcp server. | Python 3.12 |
 
-`okf-web2` is bun-only (no `pyproject.toml`), so the uv workspace excludes it.
+`okf-web` is bun-only (no `pyproject.toml`), so the uv workspace excludes it.
 
 ## Words we use
 
@@ -50,16 +51,16 @@ Needs [uv](https://docs.astral.sh/uv/) and [Bun](https://bun.sh/).
 
 ```bash
 uv sync                                   # Python side
-cd packages/okf-web2 && bun install && bun run build && cd -
-uv run okf-web --static packages/okf-web2/dist
+cd packages/okf-web && bun install && bun run build && cd -
+uv run okf-backend --static packages/okf-web/dist
 # open http://127.0.0.1:8765
 ```
 
-`okf-web` options:
+`okf-backend` options:
 
 | Flag | Default | What it does |
 |---|---|---|
-| `--static DIR` | the bundled `okf-web` UI | serve a built frontend (e.g. `packages/okf-web2/dist`) |
+| `--static DIR` | none (API only) | serve a built frontend (e.g. `packages/okf-web/dist`) |
 | `--port PORT` | `8765` | port |
 | `--host HOST` | `127.0.0.1` | bind address. **There is no auth**; keep it local. |
 | `--read-only` | off | disable every write endpoint |
@@ -74,18 +75,18 @@ Environment:
 Frontend development with hot reload:
 
 ```bash
-uv run okf-web                           # API on 8765
-cd packages/okf-web2 && bun run dev      # UI on 5173, proxies /api to 8765
+uv run okf-backend                           # API on 8765
+cd packages/okf-web && bun run dev      # UI on 5173, proxies /api to 8765
 # OKF_API=http://127.0.0.1:9000 bun run dev   # point the proxy elsewhere
 ```
 
 The landing page is a second Vite entry (`landing.html` → `src/landing/`).
 In dev open `http://localhost:5173/landing.html`; `bun run build` writes
-`dist/landing.html`, which `okf-web --static` serves at `/landing.html`.
+`dist/landing.html`, which `okf-backend --static` serves at `/landing.html`.
 
 The landing page is also published to GitHub Pages
 (https://hannguyendd.github.io/okf-sdk/) by `.github/workflows/landing-pages.yml`
-on every push to `main` that touches `packages/okf-web2`: it builds with
+on every push to `main` that touches `packages/okf-web`: it builds with
 `--base=./` and ships `landing.html` as the site's `index.html`. One-time setup
 (repo admin): Settings → Pages → Source: **GitHub Actions**.
 
@@ -136,7 +137,7 @@ uv sync                                  # shared .venv with every member + dev 
 uv run pytest                            # all Python tests
 uv run pytest packages/okf-core/tests/test_bundle.py -v
 
-cd packages/okf-web2
+cd packages/okf-web
 bun run test                             # Vitest + MSW (in-memory fake API)
 bun run typecheck
 bun run build
@@ -149,10 +150,10 @@ bun run build
   the workspace members glob picks it up.
 - Runtime deps: `uv add --package okf-core <pkg>`; dev deps: `uv add --dev <pkg>`.
 
-### okf-web2 layout
+### okf-web layout
 
 ```
-packages/okf-web2/
+packages/okf-web/
 ├── index.html, landing.html   two Vite entries (app, landing page)
 ├── src/
 │   ├── pages/                 one file per route (wouter, hash routes)
@@ -165,8 +166,8 @@ packages/okf-web2/
 └── brand/                     BRAND.md, brand board, logo files
 ```
 
-Brand, voice and asset rules: [`packages/okf-web2/brand/BRAND.md`](../packages/okf-web2/brand/BRAND.md).
-How the art is generated: [`packages/okf-web2/ASSETS_PROMPT.md`](../packages/okf-web2/ASSETS_PROMPT.md).
+Brand, voice and asset rules: [`packages/okf-web/brand/BRAND.md`](../packages/okf-web/brand/BRAND.md).
+How the art is generated: [`packages/okf-web/ASSETS_PROMPT.md`](../packages/okf-web/ASSETS_PROMPT.md).
 
 ## Where things live on disk
 

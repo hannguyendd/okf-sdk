@@ -1,7 +1,9 @@
 # okf-mcp
 
 Producer MCP server for authoring and maintaining Open Knowledge Format (OKF)
-bundles. Built on the official `mcp` SDK (FastMCP); depends on `okf-core`.
+bundles. Built on the official `mcp` SDK (FastMCP); a thin adapter over
+`okf-backend` (operations, search and embedding settings live in
+`okf_backend`), which builds on `okf-core`.
 
 ## Workspaces and bundles
 
@@ -139,6 +141,8 @@ indexes — it is index maintenance, not a concept change, so it writes no log e
 OpenAI-compatible embedding server**, and ranks them together by cosine
 similarity. Concept bodies are not searched. It is
 disabled until you configure the server; every other tool works without it.
+The search implementation and the `OKF_EMBEDDING_*` settings belong to `okf-backend`;
+this server just exposes them.
 
 | Variable | Meaning | Default |
 |---|---|---|

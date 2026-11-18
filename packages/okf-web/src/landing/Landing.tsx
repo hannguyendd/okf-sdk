@@ -399,8 +399,8 @@ function Features() {
 
 const SETUP = `git clone ${REPO} && cd okf-sdk
 uv sync
-cd packages/okf-web2 && bun install && bun run build && cd -
-uv run okf-web --static packages/okf-web2/dist`;
+cd packages/okf-web && bun install && bun run build && cd -
+uv run okf-backend --static packages/okf-web/dist`;
 
 function Start() {
   const lines = useOnRules<HTMLDivElement>();

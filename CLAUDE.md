@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 of Open Knowledge Format tooling. The root `pyproject.toml` is a **virtual**
 workspace root (no `[project]` of its own); packages live under `packages/*`.
 
-The workspace has four members. **`packages/okf-core`** — a library for
+The workspace has four Python members plus the bun-only portal. **`packages/okf-core`** — a library for
 reading, indexing, and validating OKF bundles (`OKFDocument`, `Bundle`,
 `regenerate_indexes`, `validate_bundle`). Its only runtime dependency is PyYAML.
 See `docs/superpowers/specs/2026-06-25-okf-core-indexing-library-design.md` for
@@ -28,10 +28,20 @@ creation does not `git init`. Tests must pass `root=`/set `OKF_HOME` — never
 touch the real home. See
 `docs/superpowers/specs/2026-10-18-okf-core-workspace-design.md`. Note the
 glossary rename: `_index.md` is now a *directory listing*; *index* means a
-workspace's collection of concepts (MCP and web call it a *bundle*).
+workspace's collection of concepts (MCP and the portal call it a *bundle*).
 
-**`packages/okf-mcp`** — a producer MCP server (official `mcp` SDK / FastMCP,
-plus `pydantic-settings`) for authoring bundles: tools to `add`, `patch`,
+**`packages/okf-backend`** — the shared backend: `okf_backend.operations`
+(add/patch/move/delete/describe/mkdir/reindex; all I/O through `Storage`),
+search (`okf_backend.embeddings`, `okf_backend.vector_store`: local
+OpenAI-compatible embeddings + sqlite-vec), `okf_backend.settings.BackendSettings`
+(`pydantic-settings`, `OKF_EMBEDDING_*`), and the Starlette REST API
+(`okf_backend.api.create_app`, CLI `okf-backend`: `--read-only`, `--host`,
+`--port 8765`, `--static DIR`; binds 127.0.0.1, no auth; API only without
+`--static`). Storage plugins are extras registered via the `okf_core.storage`
+entry-point group.
+
+**`packages/okf-mcp`** — a thin producer MCP server (official `mcp` SDK / FastMCP) whose
+tools call `okf_backend.operations` in-process, for authoring bundles: tools to `add`, `patch`,
 `move`, `delete`, `get`, and `list` concepts, `read_index` (progressive
 disclosure), `describe` (set/clear a directory's authored `description` in its
 `_index.md` frontmatter), and `reindex` (regenerate all `_index.md` to repair
@@ -50,16 +60,6 @@ the old `OKF_BUNDLE_ROOT`/`OKF_STORE_ROOT` modes),
 `docs/superpowers/specs/2026-06-29-okf-mcp-producer-design.md`, and
 `docs/superpowers/specs/2026-10-19-okf-mcp-vector-search-design.md`.
 
-**`packages/okf-web`** — local web UI for browsing, searching, and managing a
-bundle: a Starlette HTTP API (`okf_web.app`) that calls `okf_mcp.operations`
-directly (all I/O through `Storage`), plus a React/Bun/TypeScript/Tailwind frontend in
-`packages/okf-web/frontend` (built into the git-ignored `src/okf_web/static`
-and served by the API). Run: `bun install && bun run build` in the frontend
-folder, then `uv run okf-web` (serves the workspace registry under `$OKF_HOME`
-with a workspace/index picker; `--read-only`, binds 127.0.0.1, no auth). The UI
-shows and edits each index's description. Frontend tests: `bun test`. See
-`docs/superpowers/specs/2026-10-25-okf-web-ui-design.md`.
-
 **`packages/okf-claude`** — Claude Code integration (`okf-claude` CLI):
 `setup`/`uninstall` register the `okf` MCP server (`claude mcp add`, pinned via
 `OKF_WORKSPACE`/`OKF_BUNDLE`), write SessionStart/SessionEnd hooks into a Claude
@@ -72,15 +72,15 @@ stops recursion. Prompts live in `src/okf_claude/prompts/`. Entry script:
 `scripts/setup-claude-code.sh`. See
 `docs/superpowers/specs/2026-11-13-okf-claude-code-integration-design.md`.
 
-**`packages/okf-web2`**: "OK, Fine Memory", a second frontend for the same
-`okf-web` API: Vite + React 19 + wouter (hash routes) + TanStack Query + Radix
+**`packages/okf-web`**: the "Memory portal" ("OK, Fine Memory"), the frontend for the
+`okf-backend` REST API: Vite + React 19 + wouter (hash routes) + TanStack Query + Radix
 Dialog + react-hook-form + sonner, drawn with rough.js / rough-notation on a
 lined-notebook theme. It is bun-only (no `pyproject.toml`), so the root uv
-workspace excludes it. Dev: `bun run dev` (proxies `/api` to `okf-web` on
-8765); prod: `bun run build` then `uv run okf-web --static packages/okf-web2/dist`.
-Tests: `bun run test` (Vitest + MSW). Brand and voice: `packages/okf-web2/brand/BRAND.md`.
+workspace excludes it. Dev: `bun run dev` (proxies `/api` to `okf-backend` on
+8765); prod: `bun run build` then `uv run okf-backend --static packages/okf-web/dist`.
+Tests: `bun run test` (Vitest + MSW). Brand and voice: `packages/okf-web/brand/BRAND.md`.
 A second Vite entry, `landing.html` (`src/landing/`), is the marketing page;
-`okf-web --static` serves it at `/landing.html`. The root `README.md` is the
+`okf-backend --static` serves it at `/landing.html`. The root `README.md` is the
 fun, Okie-voiced intro; technical docs live in `docs/TECHNICAL.md`.
 Workspaces carry an optional crayon `color` in `.okf/workspace.json`
 (`Workspace.color()`/`set_color()`, `okf_core.WORKSPACE_COLORS`); empty

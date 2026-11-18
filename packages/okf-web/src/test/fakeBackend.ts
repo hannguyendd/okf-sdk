@@ -1,6 +1,6 @@
 import { http, HttpResponse } from "msw";
 
-/** In-memory stand-in for the okf-web API, enough to drive the UI in tests. */
+/** In-memory stand-in for the okf-backend API, enough to drive the UI in tests. */
 interface FakeConcept { frontmatter: Record<string, unknown>; body: string }
 interface FakeIndex { description: string | null; concepts: Record<string, FakeConcept>; dirs: Set<string> }
 interface FakeWorkspace { color: string | null; indexes: Record<string, FakeIndex> }

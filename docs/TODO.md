@@ -36,7 +36,7 @@ Ideas captured for later review. Each needs a brainstorm and a spec before imple
 
 ## 5. React web UI for querying and managing memories
 
-**Status:** Done — `packages/okf-web` (local-only, full management, semantic search). Workspace/index picker merged in PR #6. Follow-up: auth before any hosting.
+**Status:** Done — `packages/okf-web` portal + `packages/okf-backend` API (local-only, full management, semantic search). Workspace/index picker merged in PR #6. Follow-up: auth before any hosting.
 
 - A React web app to query and view (and manage) the memories stored in OKF bundles.
 - Open questions: read-only viewer vs full management (add/patch/move/delete), how the UI reaches the data (new HTTP API over `okf-core`, or via `okf-mcp`), where it lives in the workspace (a new member under `packages/` or a separate frontend folder), how it relates to search (item 3) and the storage interface (item 4), and auth if it is ever hosted.

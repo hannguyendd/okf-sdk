@@ -3,7 +3,7 @@
 > **OK, fine, I’ll remember it for you.**
 
 The source of truth for how OK, Fine Memory looks, sounds, and behaves. The app
-(`packages/okf-web2`), its assets (`ASSETS_PROMPT.md`), docs, and anything
+(`packages/okf-web`), its assets (`ASSETS_PROMPT.md`), docs, and anything
 public-facing follow this file.
 
 ---

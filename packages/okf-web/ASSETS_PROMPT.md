@@ -2,13 +2,13 @@
 
 You are creating the original icon, illustration and brand asset set for
 **OK, Fine Memory** (tagline: *“OK, fine, I’ll remember it for you.”*), a local
-web UI for a markdown knowledge base. Work in `packages/okf-web2/` on branch
+web UI for a markdown knowledge base. Work in `packages/okf-web/` on branch
 `okf-web-v2`.
 
 **Read first. These are the source of truth:**
 
-- `packages/okf-web2/brand/BRAND.md`: name, mascot, palette, type, style, voice.
-- `packages/okf-web2/brand/brand-board.html`: visual board (open in a browser).
+- `packages/okf-web/brand/BRAND.md`: name, mascot, palette, type, style, voice.
+- `packages/okf-web/brand/brand-board.html`: visual board (open in a browser).
   Its inline snail is a rough placeholder; your Okie replaces it.
 
 **Ignore** the repo-root folder `assets/branding/` (flat orange note-face
@@ -188,7 +188,7 @@ crayon underline under the name.
 
 ### 7. Manifest + preview
 
-- `src/assets/doodles/manifest.json`: `{ "<path relative to packages/okf-web2>": { "size": "WxH", "description": "..." } }` for every file you made (including `brand/` and `public/`, excluding `_sources/`).
+- `src/assets/doodles/manifest.json`: `{ "<path relative to packages/okf-web>": { "size": "WxH", "description": "..." } }` for every file you made (including `brand/` and `public/`, excluding `_sources/`).
 - `src/assets/doodles/preview.html`: a static page showing every asset on
   lined paper (`#fffef9`, `#c9dcf5` rules every 32 px, pink margin line),
   grouped by folder, each labelled with its path; icons shown at 128 px and at
