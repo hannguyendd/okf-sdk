@@ -334,12 +334,14 @@ source = { editable = "packages/okf-claude" }
 dependencies = [
     { name = "okf-backend" },
     { name = "okf-core" },
+    { name = "okf-mcp" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "okf-backend", editable = "packages/okf-backend" },
     { name = "okf-core", editable = "packages/okf-core" },
+    { name = "okf-mcp", editable = "packages/okf-mcp" },
 ]
 
 [[package]]
