@@ -154,7 +154,7 @@ def ensure_target(workspace: str, *, create: bool) -> list[str]:
     done: list[str] = []
     if not registry.exists(workspace):
         if not create:
-            raise FileNotFoundError(f"no workspace {workspace!r} (pass --create to create it)")
+            raise FileNotFoundError(f"no workspace {workspace!r} (drop --no-create to create it)")
         registry.create(workspace)
         done.append(f"created workspace {workspace!r}")
     else:

@@ -19,7 +19,9 @@ def test_setup_no_create_fails_cleanly(tmp_path, okf_home, capsys):
     with pytest.raises(SystemExit) as exc:
         cli.main(["setup", "-w", "team", "--project", str(tmp_path), "--no-create", "--no-mcp"])
     assert exc.value.code == 1
-    assert "no workspace 'team'" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "no workspace 'team'" in err
+    assert "drop --no-create" in err and "--create " not in err
 
 
 def _make_v1(okf_home, name="team"):
