@@ -20,6 +20,7 @@ from okf_core import (
     OKFDocument,
     Storage,
     WorkspaceRegistry,
+    iter_visible_files,
     map_absolute_links,
 )
 
@@ -76,7 +77,7 @@ def migrate_workspace(storage: Storage, *, dry_run: bool = False) -> list[str]:
 
     versions: dict[str, object] = {}
     for b in _old_bundles(storage):
-        for key in sorted(storage.iter_files(b, ".md")):
+        for key in sorted(iter_visible_files(storage, b, ".md")):
             if key.rsplit("/", 1)[-1] in RESERVED_FILENAMES:
                 continue
             doc = OKFDocument.parse(storage.read_text(key))
