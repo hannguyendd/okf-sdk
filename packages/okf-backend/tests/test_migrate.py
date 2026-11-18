@@ -124,3 +124,15 @@ def test_main_exit_nonzero_but_migrates_others(tmp_path, monkeypatch):
         main([])
     assert e.value.code == 1
     assert json.loads(good.read_text(".okf/workspace.json"))["version"] == 2
+
+
+def test_workspace_created_after_upgrade_is_not_migrated(tmp_path):
+    from okf_core import WorkspaceRegistry
+
+    ws = WorkspaceRegistry(tmp_path / "workspaces").create("fresh")
+    ws.storage.write_text("notes/b.md", "---\ntype: note\ntitle: B\n---\nb\n")
+    ws.storage.write_text("notes/a.md", "---\ntype: note\ntitle: A\n---\nsee [B](/notes/b.md)\n")
+    before = _snapshot(tmp_path / "workspaces" / "fresh")
+    assert migrate_workspace(ws.storage) == ["already v2"]
+    assert _snapshot(tmp_path / "workspaces" / "fresh") == before
+    assert "[B](/notes/b.md)" in ws.storage.read_text("notes/a.md")

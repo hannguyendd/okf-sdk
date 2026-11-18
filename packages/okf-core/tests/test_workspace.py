@@ -145,4 +145,15 @@ def test_set_color_rejects_unknown(tmp_path: Path, bad: str):
     ws = WorkspaceRegistry(tmp_path).create("w")
     with pytest.raises(ValueError, match="Invalid color"):
         ws.set_color(bad)
-    assert not _json(ws).exists()
+    assert json.loads(_json(ws).read_text()) == {"version": 2}
+
+
+def test_create_writes_v2_marker(tmp_path: Path):
+    ws = WorkspaceRegistry(tmp_path).create("w")
+    assert json.loads(_json(ws).read_text()) == {"version": 2}
+    assert ws.color() is None
+
+
+def test_create_writes_v2_marker_on_memory_storage():
+    ws = WorkspaceRegistry(root=MemoryStorage()).create("w")
+    assert json.loads(ws.storage.read_text(".okf/workspace.json")) == {"version": 2}

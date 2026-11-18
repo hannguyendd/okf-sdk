@@ -137,7 +137,11 @@ class WorkspaceRegistry:
         if self.storage.exists(name):
             raise FileExistsError(f"Workspace {name!r} already exists")
         self.storage.mkdir(name)
-        return self._workspace(name)
+        ws = self._workspace(name)
+        # Stamp the v2 marker so okf-migrate-v2 (which reads a missing file as
+        # v1) never rewrites a workspace created after the upgrade.
+        ws._write_meta({"version": _WORKSPACE_FILE_VERSION})
+        return ws
 
     def get(self, name: str) -> Workspace:
         if not self.exists(name):
