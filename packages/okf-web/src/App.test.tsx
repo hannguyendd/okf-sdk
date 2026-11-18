@@ -69,6 +69,16 @@ describe("workspaces", () => {
     await waitFor(() => expect(backend.workspaces.w.descriptions[""]).toBe("Team memory"));
     expect(backend.calls.find((c) => c.path === "/api/workspaces/w/describe")?.body).toEqual({ dir: "", description: "Team memory" });
   });
+
+  it("describes a fresh workspace whose root has no listing yet", async () => {
+    const { user, backend } = start("#/w/empty/");
+    await user.click(await screen.findByRole("button", { name: "Edit workspace description" }));
+    await user.type(screen.getByLabelText("Workspace description (empty clears it)"), "Fresh start");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(backend.workspaces.empty.descriptions[""]).toBe("Fresh start"));
+    expect(await screen.findByText("Noted.")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
 });
 
 describe("workspace pages", () => {

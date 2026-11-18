@@ -484,6 +484,8 @@ def describe_directory(
     caption, and appends an Update entry to the directory's ``_log.md``. Fails if
     ``dir`` escapes the bundle root, is not a directory, or has no ``_index.md``
     (directories only exist once populated, so there is always an index to edit).
+    The root is the exception: a fresh workspace has no root ``_index.md`` yet,
+    so a missing one is treated as empty and created.
     """
     storage = open_storage(bundle_root)
     target = _clean_dir(dir)
@@ -491,10 +493,15 @@ def describe_directory(
         if not storage.is_dir(target):
             raise ValueError(f"directory not found: {dir}")
         index_key = posixpath.join(target, INDEX_FILENAME)
-        if not storage.exists(index_key) or storage.is_dir(index_key):
+        if storage.is_dir(index_key):
+            raise ValueError(f"directory has no {INDEX_FILENAME}: {dir}")
+        if storage.exists(index_key):
+            doc = OKFDocument.parse(storage.read_text(index_key))
+        elif target == "":
+            doc = OKFDocument(frontmatter={}, body="")
+        else:
             raise ValueError(f"directory has no {INDEX_FILENAME}: {dir}")
 
-        doc = OKFDocument.parse(storage.read_text(index_key))
         fm = dict(doc.frontmatter)
         desc = description.strip()
         cleared = not desc

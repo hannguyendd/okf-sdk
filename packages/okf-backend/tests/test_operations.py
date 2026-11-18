@@ -654,6 +654,21 @@ def test_describe_errors_without_index(tmp_path):
         operations.describe_directory(tmp_path, "empty", "nope")
 
 
+def test_describe_root_without_index_creates_it():
+    """A fresh workspace has no root ``_index.md``; describing the root makes one."""
+    from okf_core import MemoryStorage
+
+    storage = MemoryStorage()
+    res = operations.describe_directory(storage, "", "Team notes")
+    assert res["dir"] == ""
+    doc = OKFDocument.parse(storage.read_text("_index.md"))
+    assert doc.frontmatter.get("description") == "Team notes"
+
+    operations.describe_directory(storage, "", "")
+    doc = OKFDocument.parse(storage.read_text("_index.md"))
+    assert "description" not in doc.frontmatter
+
+
 def test_describe_errors_on_missing_dir(tmp_path):
     with pytest.raises(ValueError):
         operations.describe_directory(tmp_path, "nope", "x")

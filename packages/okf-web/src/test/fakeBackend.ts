@@ -88,6 +88,9 @@ export function createBackend(opts: { readOnly?: boolean; search?: boolean } = {
     }
     if (rest === "reindex") return json({ action: "reindexed", indexes: [], count: dirsOf(ix).size + 1 });
     if (rest === "describe") {
+      // like operations.describe_directory: the root always works (a missing
+      // root _index.md is created); any other dir needs to exist with its _index.md
+      if (body!.dir && !dirsOf(ix).has(body!.dir)) return json({ error: `directory not found: ${body!.dir}` }, 400);
       if (body!.description) ix.descriptions[body!.dir] = body!.description;
       else delete ix.descriptions[body!.dir];
       return json({ dir: body!.dir, action: "described" });
