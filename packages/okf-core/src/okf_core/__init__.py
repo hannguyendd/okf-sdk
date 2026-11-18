@@ -32,7 +32,6 @@ from okf_core.storage import (
 )
 from okf_core.synthesizer import fallback_synthesizer
 from okf_core.workspace import (
-    MAX_DESCRIPTION_CHARS,
     METADATA_DIR,
     WORKSPACE_COLORS,
     WORKSPACE_FILE,
@@ -66,7 +65,6 @@ __all__ = [
     "path_to_concept_id",
     "regenerate_indexes",
     "fallback_synthesizer",
-    "MAX_DESCRIPTION_CHARS",
     "METADATA_DIR",
     "WORKSPACE_COLORS",
     "WORKSPACE_FILE",

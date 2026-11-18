@@ -1,10 +1,8 @@
-"""Workspaces: named directories under ``~/.okf/workspaces`` holding indexes.
+"""Workspaces: named directories under ``~/.okf/workspaces``.
 
-A *workspace* is a git-repo-shaped directory; an *index* is a collection of
-concepts inside it, and is exactly one bundle (a visible top-level directory).
-Workspace metadata (bundle descriptions, the workspace colour) lives in
-``<workspace>/.okf/``, which
-the hidden-name rule keeps from ever being mistaken for an index.
+A *workspace* is itself one OKF bundle: its root holds the concepts.
+Workspace metadata (the colour; ``vectors.db``) lives in the hidden
+``<workspace>/.okf/`` folder, which holds no concept files.
 """
 from __future__ import annotations
 
@@ -20,10 +18,9 @@ from okf_core.storage import Storage, open_storage
 OKF_HOME_ENV = "OKF_HOME"
 METADATA_DIR = ".okf"
 WORKSPACE_FILE = "workspace.json"
-MAX_DESCRIPTION_CHARS = 1000
 #: Colours a workspace may be tagged with (UI accent; names, not hex values).
 WORKSPACE_COLORS = ("yellow", "pink", "green", "blue", "red", "orange", "purple")
-_WORKSPACE_FILE_VERSION = 1
+_WORKSPACE_FILE_VERSION = 2
 _NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
@@ -54,17 +51,6 @@ def _subdirs(storage: Storage) -> list[str]:
     return [e.name for e in entries if e.is_dir]
 
 
-def _clean_description(text: str | None) -> str | None:
-    if text is None or not text.strip():
-        return None
-    text = text.strip()
-    if len(text) > MAX_DESCRIPTION_CHARS:
-        raise ValueError(
-            f"description is {len(text)} chars; the maximum is {MAX_DESCRIPTION_CHARS}"
-        )
-    return text
-
-
 @dataclass(frozen=True)
 class Workspace:
     name: str
@@ -76,36 +62,9 @@ class Workspace:
         root = getattr(self.storage, "root", None)
         return Path(root) if root is not None else None
 
-    def indexes(self) -> list[str]:
-        """Names of the visible top-level directories (``.``/``_`` prefixed are skipped)."""
-        return [n for n in _subdirs(self.storage) if not n.startswith((".", "_"))]
-
-    def create_index(self, name: str, description: str | None = None) -> Storage:
-        _validate_name(name, "index")
-        _clean_description(description)  # validate before anything is created
-        self._read_meta()
-        if self.storage.exists(name):
-            raise FileExistsError(f"Index {name!r} already exists in workspace {self.name!r}")
-        self.storage.mkdir(name)
-        if description is not None:
-            self.set_description(name, description)
-        return self.storage.child(name)
-
-    def bundle_storage(self, name: str) -> Storage:
-        _validate_name(name, "index")
-        if not self.storage.is_dir(name):
-            raise FileNotFoundError(f"No index {name!r} in workspace {self.name!r}")
-        return self.storage.child(name)
-
-    def index_root(self, name: str) -> Path:
-        storage = self.bundle_storage(name)
-        root = getattr(storage, "root", None)
-        if root is None:
-            raise ValueError(f"workspace {self.name!r} is not on local storage")
-        return Path(root)
-
-    def load_index(self, name: str) -> Bundle:
-        return Bundle.load(self.bundle_storage(name))
+    def load(self) -> Bundle:
+        """The workspace as an OKF bundle."""
+        return Bundle.load(self.storage)
 
     def meta_storage(self) -> Storage:
         return self.storage.child(METADATA_DIR)
@@ -117,19 +76,17 @@ class Workspace:
         try:
             text = self.storage.read_text(key)
         except FileNotFoundError:
-            return {"version": _WORKSPACE_FILE_VERSION, "bundles": {}}
+            return {"version": _WORKSPACE_FILE_VERSION}
         try:
             data = json.loads(text)
         except ValueError as exc:
             raise ValueError(f"corrupt {key} in workspace {self.name!r}: {exc}") from exc
-        if (
-            not isinstance(data, dict)
-            or data.get("version") != _WORKSPACE_FILE_VERSION
-            or not isinstance(data.get("bundles"), dict)
-        ):
+        if isinstance(data, dict) and data.get("version") == 1:
+            raise ValueError(f"{key} is version 1; run okf-migrate-v2")
+        if not isinstance(data, dict) or data.get("version") != _WORKSPACE_FILE_VERSION:
             raise ValueError(
                 f"unsupported or corrupt {key} in workspace {self.name!r}: "
-                f"expected {{\"version\": {_WORKSPACE_FILE_VERSION}, \"bundles\": {{...}}}}"
+                f"expected {{\"version\": {_WORKSPACE_FILE_VERSION}}}"
             )
         return data
 
@@ -138,28 +95,6 @@ class Workspace:
             f"{METADATA_DIR}/{WORKSPACE_FILE}",
             json.dumps(data, indent=2, sort_keys=True) + "\n",
         )
-
-    def _entry(self, data: dict, name: str) -> str | None:
-        entry = data["bundles"].get(name)
-        description = entry.get("description") if isinstance(entry, dict) else None
-        return description if isinstance(description, str) else None
-
-    def description(self, name: str) -> str | None:
-        _validate_name(name, "index")
-        return self._entry(self._read_meta(), name)
-
-    def set_description(self, name: str, text: str | None) -> str | None:
-        """Set (or clear, with ``None``/blank) a bundle's description; returns it."""
-        cleaned = _clean_description(text)
-        with self.storage.lock():
-            data = self._read_meta()
-            self.bundle_storage(name)
-            live = set(self.indexes())
-            bundles = {k: v for k, v in data["bundles"].items() if k in live}
-            bundles[name] = {"description": cleaned}
-            data["bundles"] = bundles
-            self._write_meta(data)
-        return cleaned
 
     def color(self) -> str | None:
         """The workspace's colour (one of ``WORKSPACE_COLORS``), or ``None``."""
@@ -181,12 +116,6 @@ class Workspace:
                 data["color"] = color
             self._write_meta(data)
         return color
-
-    def bundles_info(self) -> list[dict]:
-        """``[{"name", "description"}]`` for every index, sorted by name."""
-        data = self._read_meta()
-        return [{"name": n, "description": self._entry(data, n)} for n in self.indexes()]
-
 
 class WorkspaceRegistry:
     """The set of workspaces under ``<okf home>/workspaces``."""
