@@ -79,6 +79,18 @@ def test_skips_hidden_and_underscore_dirs():
     assert s.read_text("_x/a.md") == "[y](/t.md)"
 
 
+def test_skips_hidden_dirs_inside_bundles():
+    s = MemoryStorage()
+    s.write_text("b/a.md", "---\ntype: t\n---\n[y](/t.md)")
+    s.write_text("b/.github/README.md", "# plain\nsee [z](/docs/z.md)\n")
+    s.write_text("b/.cache/bad.md", "---\n: : not yaml [\n---\nbody\n")
+    migrate_workspace(s)
+    assert "[y](/b/t.md)" in s.read_text("b/a.md")
+    assert s.read_text("b/.github/README.md") == "# plain\nsee [z](/docs/z.md)\n"
+    assert s.read_text("b/.cache/bad.md") == "---\n: : not yaml [\n---\nbody\n"
+    assert json.loads(s.read_text(".okf/workspace.json"))["version"] == 2
+
+
 def test_main_dry_run_and_real(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("OKF_HOME", str(tmp_path))
     s = LocalStorage(tmp_path / "workspaces" / "w1")

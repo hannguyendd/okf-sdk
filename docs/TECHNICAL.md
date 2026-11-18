@@ -64,7 +64,7 @@ uv run okf-backend --static packages/okf-web/dist
 |---|---|---|
 | `--static DIR` | none (API only) | serve a built frontend (e.g. `packages/okf-web/dist`) |
 | `--port PORT` | `8765` | port |
-| `--host HOST` | `127.0.0.1` | bind address. **There is no auth**; keep it local. |
+| `--host HOST` | `127.0.0.1` | bind address. **There is no auth**; keep it local. Only loopback names and this address are accepted as `Host`, and cross-site or non-JSON writes are refused (`0.0.0.0` turns the `Host` check off). |
 | `--read-only` | off | disable every write endpoint |
 
 Environment:
