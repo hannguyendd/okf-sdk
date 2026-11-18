@@ -58,29 +58,32 @@ def _old_bundles(storage: Storage) -> list[str]:
 def migrate_workspace(storage: Storage, *, dry_run: bool = False) -> list[str]:
     """Migrate one workspace in place; returns one line per action or warning.
 
-    With ``dry_run`` nothing is written (the same lines are returned).
+    Every new file text is computed into a plan before the first write, so a
+    parse or data error leaves the workspace untouched (a re-run can never
+    double-prefix links). With ``dry_run`` the plan is logged, never applied.
     """
     meta = _read_v1(storage)
-    if meta.get("version") == 2:
+    version = meta.get("version", 1) if meta else 1
+    if isinstance(version, bool) or version not in (1, 2):
+        raise ValueError(f"unsupported {_META_KEY} version {version!r}; expected 1 or 2")
+    if version == 2:
         return ["already v2"]
     descriptions = meta.get("bundles") or {}
+    if not isinstance(descriptions, dict):
+        descriptions = {}
     log: list[str] = []
-
-    def write(key: str, text: str) -> None:
-        if not dry_run:
-            storage.write_text(key, text)
+    plan: dict[str, str] = {}
 
     versions: dict[str, object] = {}
     for b in _old_bundles(storage):
         for key in sorted(storage.iter_files(b, ".md")):
             if key.rsplit("/", 1)[-1] in RESERVED_FILENAMES:
                 continue
-            text = storage.read_text(key)
-            doc = OKFDocument.parse(text)
+            doc = OKFDocument.parse(storage.read_text(key))
             new_body = map_absolute_links(doc.body, lambda t, b=b: f"{b}/{t}")
             if new_body != doc.body:
                 doc.body = new_body
-                write(key, doc.serialize())
+                plan[key] = doc.serialize()
                 log.append(f"rewrote links in {key}")
 
         index_key = f"{b}/{INDEX_FILENAME}"
@@ -90,7 +93,8 @@ def migrate_workspace(storage: Storage, *, dry_run: bool = False) -> list[str]:
             else OKFDocument()
         )
         changed = False
-        desc = (descriptions.get(b) or {}).get("description") if isinstance(descriptions, dict) else None
+        entry = descriptions.get(b)
+        desc = entry.get("description") if isinstance(entry, dict) else None
         if desc:
             if doc.frontmatter.get("description"):
                 log.append(f"kept _index.md description for {b}")
@@ -102,7 +106,7 @@ def migrate_workspace(storage: Storage, *, dry_run: bool = False) -> list[str]:
             versions[b] = doc.frontmatter.pop("okf_version")
             changed = True
         if changed:
-            write(index_key, doc.serialize())
+            plan[index_key] = doc.serialize()
 
     root_key = INDEX_FILENAME
     root_doc = (
@@ -120,23 +124,27 @@ def migrate_workspace(storage: Storage, *, dry_run: bool = False) -> list[str]:
             )
         if root_doc.frontmatter.get("okf_version") != best:
             root_doc.frontmatter["okf_version"] = best
-            write(root_key, root_doc.serialize())
+            plan[root_key] = root_doc.serialize()
             log.append(f"set okf_version {best} on root {INDEX_FILENAME}")
 
     new_meta: dict = {"version": 2}
     if meta.get("color"):
         new_meta["color"] = meta["color"]
-    # The version marker goes in before the (re-runnable) reindex, so a crash
-    # after the non-idempotent link rewrite can't cause a second rewrite.
-    write(_META_KEY, json.dumps(new_meta, indent=2, sort_keys=True) + "\n")
+    # Marker last in the plan: it flips the workspace to v2 only after all
+    # content writes; the reindex that follows is re-runnable.
+    plan[_META_KEY] = json.dumps(new_meta, indent=2, sort_keys=True) + "\n"
     log.append(f"wrote {_META_KEY} (version 2)")
-    if storage.exists(_VECTORS_KEY):
-        if not dry_run:
-            storage.delete(_VECTORS_KEY)
+    has_vectors = storage.exists(_VECTORS_KEY)
+    if has_vectors:
         log.append(f"deleted {_VECTORS_KEY} (rebuilt on next search)")
-    if not dry_run:
-        reindex_bundle(storage)
     log.append("regenerated _index.md files")
+
+    if not dry_run:
+        for key, text in plan.items():
+            storage.write_text(key, text)
+        if has_vectors:
+            storage.delete(_VECTORS_KEY)
+        reindex_bundle(storage)
     return log
 
 
@@ -146,15 +154,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--dry-run", action="store_true", help="show what would change; write nothing")
     args = parser.parse_args(argv)
+    failed = False
     for ws in WorkspaceRegistry().list():
         print(f"{ws.name}:")
         try:
             lines = migrate_workspace(ws.storage, dry_run=args.dry_run)
         except Exception as exc:  # keep going with the other workspaces
             print(f"  error: {exc}", file=sys.stderr)
+            failed = True
             continue
         for line in lines:
             print(f"  {line}")
+    if failed:
+        raise SystemExit(1)
     return 0
 
 

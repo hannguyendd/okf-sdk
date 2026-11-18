@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from okf_core import LocalStorage, MemoryStorage, OKFDocument
 
 from okf_backend.migrate import main, migrate_workspace
@@ -87,3 +89,38 @@ def test_main_dry_run_and_real(tmp_path, monkeypatch, capsys):
     assert "w1" in capsys.readouterr().out
     main([])
     assert json.loads(s.read_text(".okf/workspace.json"))["version"] == 2
+
+
+def test_failure_writes_nothing_then_rerun_single_prefixed(tmp_path):
+    s = LocalStorage(tmp_path / "w")
+    s.write_text(".okf/workspace.json", json.dumps({"version": 1}))
+    s.write_text("a/x.md", "---\ntype: t\n---\n[l](/t.md)")
+    s.write_text("b/bad.md", "---\ntype: [unclosed\n---\nbody")
+    before = _snapshot(tmp_path / "w")
+    with pytest.raises(Exception):
+        migrate_workspace(s)
+    assert _snapshot(tmp_path / "w") == before
+    s.write_text("b/bad.md", "---\ntype: t\n---\nbody")
+    migrate_workspace(s)
+    assert "[l](/a/t.md)" in s.read_text("a/x.md")
+    assert "/a/a/" not in s.read_text("a/x.md")
+
+
+@pytest.mark.parametrize("version", [3, "2", None, 1.5, True])
+def test_unsupported_version_raises(version):
+    s = MemoryStorage()
+    s.write_text(".okf/workspace.json", json.dumps({"version": version}))
+    with pytest.raises(ValueError, match=repr(version)):
+        migrate_workspace(s)
+
+
+def test_main_exit_nonzero_but_migrates_others(tmp_path, monkeypatch):
+    monkeypatch.setenv("OKF_HOME", str(tmp_path))
+    bad = LocalStorage(tmp_path / "workspaces" / "bad")
+    bad.write_text(".okf/workspace.json", "{not json")
+    good = LocalStorage(tmp_path / "workspaces" / "good")
+    _v1(good)
+    with pytest.raises(SystemExit) as e:
+        main([])
+    assert e.value.code == 1
+    assert json.loads(good.read_text(".okf/workspace.json"))["version"] == 2
