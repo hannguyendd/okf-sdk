@@ -15,6 +15,7 @@ dependencies = [
 
 [project.scripts]
 okf-backend = "okf_backend.server:main"
+okf-migrate-v2 = "okf_backend.migrate:main"
 
 [build-system]
 requires = ["hatchling"]
