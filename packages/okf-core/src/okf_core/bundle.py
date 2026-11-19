@@ -8,6 +8,7 @@ from pathlib import Path
 from okf_core.constants import RESERVED_FILENAMES
 from okf_core.document import OKFDocument, OKFDocumentError
 from okf_core.links import _dir_key, _resolve_target_id
+from okf_core.paths import iter_visible_files
 from okf_core.storage import Storage, is_uri, open_storage
 
 _LINK_RE = re.compile(r"\]\(([^)\s]+\.md)(?:#[A-Za-z0-9_\-]*)?\)")
@@ -102,7 +103,7 @@ class Bundle:
         if not storage.is_dir(""):
             raise FileNotFoundError(f"Bundle directory not found: {storage.location}")
         concepts: list[Concept] = []
-        for key in storage.iter_files(suffix=".md"):
+        for key in iter_visible_files(storage, suffix=".md"):
             if posixpath.basename(key) in RESERVED_FILENAMES:
                 continue
             try:

@@ -1,26 +1,69 @@
-# okf-web
+# okf-web: OK, Fine Memory
 
-Local web UI for browsing, searching and managing OKF bundles: a small Starlette
-HTTP API over `okf_mcp.operations` plus a React (Bun + TypeScript + Tailwind) frontend.
-Design: `docs/superpowers/specs/2026-10-25-okf-web-ui-design.md`.
+> OK, fine, I’ll remember it for you.
+
+The kid's-notebook web UI for OKF workspaces. It talks to the HTTP API of
+`okf-backend` (Python, `packages/okf-backend`), so run that as the backend. Brand, voice and
+style live in [`brand/BRAND.md`](brand/BRAND.md).
 
 ## Run
 
 ```bash
-cd packages/okf-web/frontend && bun install && bun run build  # once: builds into src/okf_web/static
-uv run okf-web                                               # http://127.0.0.1:8765
+# backend (from the repo root): serves the API on 127.0.0.1:8765
+uv run okf-backend
+
+# frontend dev server with HMR, proxies /api to the backend
+cd packages/okf-web && bun install && bun run dev      # http://localhost:5173
+
+# or build once and let okf-backend serve it
+bun run build && uv run okf-backend --static packages/okf-web/dist
 ```
 
-It serves your workspaces under `$OKF_HOME` (default `~/.okf`): pick or create a
-workspace and an index in the UI. Each index shows its description (what it is
-for), editable in the header. `--read-only` disables writes, including creation
-and description edits. Search needs `OKF_EMBEDDING_URL` and `OKF_EMBEDDING_MODEL`. No auth: it
-binds `127.0.0.1` by default; do not expose it.
+`OKF_API=http://127.0.0.1:8766 bun run dev` points the dev proxy at another
+backend (e.g. a slow proxy for checking loading states).
 
-## Develop / test
+There are two pages: the app (`index.html`) and the landing page
+(`landing.html`, code in `src/landing/`). In dev open
+`http://localhost:5173/landing.html`; once built, `okf-backend --static` serves it
+at `/landing.html`. Add `?intro` to the app URL to replay the opening animation.
+
+## Stack
+
+| Concern | Library |
+|---|---|
+| Build | Vite + React 19 + TypeScript |
+| Routing | wouter, hash-based (`#/w/<ws>/c/<id>`) |
+| Server state | TanStack Query (writes invalidate the whole workspace) |
+| Forms / dialogs | react-hook-form + Radix Dialog (`useDialogs().form/prompt/confirm`) |
+| Toasts | sonner (unstyled, drawn as sticky notes) |
+| Doodle look | Tailwind v4, rough.js (`<Sketch>`, `<Btn>`), rough-notation (`<Mark>`) |
+| Markdown | react-markdown + remark-gfm (tables, strikethrough, task lists) |
+| Landing animation | motion (`motion/react`): scroll reveals, sticker pops, page-flip screenshots, scroll-progress snail; honours reduced motion |
+| Fonts | `@fontsource` Mali + Patrick Hand (Vietnamese included) |
+| Tests | Vitest + Testing Library + MSW (`src/test/fakeBackend.ts`) |
+
+## Layout
+
+```
+src/
+  App.tsx              routes: #/ · #/w/:ws/ · #/w/:ws/{d,c,e,n,search}/…
+  pages/               WorkspacesPage, WorkspaceLayout, WorkspacePage, DirPage, ConceptPage, ConceptForm, SearchPage
+  components/          Tree (notebook explorer), Dialogs, ColorPicker, Logo, Title, Intro, ThemeToggle
+  doodle/              Sketch, Btn, Mark, Skeleton, Loading, Okie, DoodleIcon, Doodles
+  lib/                 api client, query hooks, scope + paths, workspace accent
+  landing/             the landing page (second Vite entry)
+  assets/doodles/      generated art (see ASSETS_PROMPT.md); picked up automatically
+  assets/landing/      landing-page art and screenshots
+brand/                 BRAND.md, brand-board.html, logo/
+```
+
+Generated art is optional: `Okie`, `DoodleIcon` and the logo use the PNGs from
+`src/assets/doodles/` and `brand/logo/` when they exist (via
+`import.meta.glob`) and fall back to inline sketches otherwise.
+
+## Test
 
 ```bash
-uv run okf-web                                 # API on 8765
-cd packages/okf-web/frontend && bun run dev   # Bun dev server (HMR), proxies /api
-bun test                                     #  Bun test runner; Python: uv run pytest packages/okf-web
+bun run test        # Vitest
+bun run typecheck   # tsc
 ```

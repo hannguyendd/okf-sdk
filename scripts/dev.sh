@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Launch the OKF stack: MCP server, web API (backend), and web frontend.
+# Launch the OKF stack: MCP server, REST backend, and the web portal.
 # By default it builds the frontend (prod) and runs in the background.
 #
-#   scripts/dev.sh [--only mcp,be,web] [--web web2|web] [--dev] [-f] [--read-only]
+#   scripts/dev.sh [--only mcp,be,web] [--dev] [-f] [--read-only]
 #   scripts/dev.sh stop | status
 #
 #   mcp  okf-mcp over streamable-http   http://127.0.0.1:$MCP_PORT/mcp  (default 47800)
-#   be   okf-web API, serving the UI    http://127.0.0.1:$BE_PORT       (default 47801)
-#   web  okf-web2 by default, or the okf-web frontend with --web web
+#        clients pick the workspace with the X-OKF-Workspace header
+#   be   okf-backend API, serving the UI http://127.0.0.1:$BE_PORT      (default 47801)
+#   web  the okf-web portal (packages/okf-web)
 #
 #   (default)        prod: build the frontend once and let the backend serve
 #                    it at the be URL; `web` implies `be`.
@@ -21,8 +22,8 @@
 # Ports: defaults sit in an uncommon range; a busy default moves to the next
 # free port. A port you set (MCP_PORT, BE_PORT, WEB_PORT) is used as is, and
 # the script stops if it is taken; set them in the shell or the repo-root
-# .env (the shell wins). OKF_HOME, OKF_WORKSPACE, OKF_BUNDLE and the
-# OKF_EMBEDDING_* variables pass through (or put them in the repo-root .env).
+# .env (the shell wins). OKF_HOME and the OKF_EMBEDDING_* variables pass
+# through (OKF_EMBEDDING_* may also go in the repo-root .env).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -30,7 +31,6 @@ cd "$ROOT"
 
 STATE="$ROOT/.okf-dev"
 ONLY="mcp,be,web"
-WEB="web2"
 PROD=1
 DETACH=1
 CMD=start
@@ -40,13 +40,12 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     stop|status) CMD="$1"; shift ;;
     --only) ONLY="$2"; shift 2 ;;
-    --web) WEB="$2"; shift 2 ;;
     --dev) PROD=0; shift ;;
     --prod) PROD=1; shift ;;
     -f|--foreground) DETACH=0; shift ;;
     -d|--detach) DETACH=1; shift ;;
     --read-only) BE_ARGS+=(--read-only); shift ;;
-    -h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "error: unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -86,11 +85,8 @@ for key in MCP_PORT BE_PORT WEB_PORT; do
   [[ -z "${!key:-}" || "${!key}" =~ ^[0-9]+$ ]] || { echo "error: $key must be a number, got '${!key}'" >&2; exit 2; }
 done
 
-case "$WEB" in
-  web2) WEB_DIR="$ROOT/packages/okf-web2"; WEB_DIST="$WEB_DIR/dist" ;;
-  web)  WEB_DIR="$ROOT/packages/okf-web/frontend"; WEB_DIST="" ;;  # builds into okf-web's bundled static dir
-  *) echo "error: --web must be web2 or web" >&2; exit 2 ;;
-esac
+WEB_DIR="$ROOT/packages/okf-web"
+WEB_DIST="$WEB_DIR/dist"
 
 want() { [[ ",$ONLY," == *",$1,"* ]]; }
 
@@ -153,9 +149,9 @@ if want web && [[ ! -d "$WEB_DIR/node_modules" ]]; then
   (cd "$WEB_DIR" && bun install)
 fi
 if want web && (( PROD )); then
-  echo "building $WEB frontend…"
+  echo "building the okf-web portal…"
   (cd "$WEB_DIR" && bun run build)
-  [[ -n "$WEB_DIST" ]] && BE_ARGS+=(--static "$WEB_DIST")
+  BE_ARGS+=(--static "$WEB_DIST")
 fi
 
 # Job control puts each service in its own process group, so stopping it
@@ -203,17 +199,13 @@ if want mcp; then
 fi
 if want be; then
   BE_URL="http://127.0.0.1:$BE_PORT"
-  (( PROD )) && want web && BE_URL+="  (serves the $WEB UI)"
-  run be 36 "$BE_URL" uv run okf-web --port "$BE_PORT" ${BE_ARGS[@]+"${BE_ARGS[@]}"}
+  (( PROD )) && want web && BE_URL+="  (serves the portal)"
+  run be 36 "$BE_URL" uv run okf-backend --port "$BE_PORT" ${BE_ARGS[@]+"${BE_ARGS[@]}"}
 fi
 if want web && (( ! PROD )); then
-  if [[ "$WEB" == web2 ]]; then
-    WEB_CMD="exec bun run dev --port $WEB_PORT --strictPort"
-  else
-    WEB_CMD="exec bun run dev"   # dev.ts reads PORT
-  fi
-  run web 33 "http://localhost:$WEB_PORT  ($WEB)" \
-    env OKF_API="http://127.0.0.1:$BE_PORT" PORT="$WEB_PORT" bash -c "cd '$WEB_DIR' && $WEB_CMD"
+  run web 33 "http://localhost:$WEB_PORT" \
+    env OKF_API="http://127.0.0.1:$BE_PORT" \
+    bash -c "cd '$WEB_DIR' && exec bun run dev --port $WEB_PORT --strictPort"
 fi
 
 [[ ${#PIDS[@]} -gt 0 ]] || { echo "nothing to run (--only $ONLY)" >&2; exit 2; }

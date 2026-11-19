@@ -142,3 +142,19 @@ def test_strip_from_subdir_resolves_parent_target(tmp_path):
 def test_strip_noop_returns_equal_body(tmp_path):
     body = "no md links [text](http://x) here"
     assert strip_links(body, tmp_path, tmp_path, {"orders"}) == body
+
+
+def test_map_absolute_links_skips_external_relative_and_keeps_fragment():
+    from okf_core import map_absolute_links
+
+    body = "[a](/x/y.md#h) [b](https://e.com/z.md) [c](//cdn/z.md) [d](../r.md)"
+    out = map_absolute_links(body, lambda t: "p/" + t)
+    assert out == "[a](/p/x/y.md#h) [b](https://e.com/z.md) [c](//cdn/z.md) [d](../r.md)"
+
+
+def test_map_absolute_links_none_leaves_link_unchanged():
+    from okf_core import map_absolute_links
+
+    body = "[a](/x.md#h) [b](/y.md)"
+    out = map_absolute_links(body, lambda t: "z/" + t if t == "y.md" else None)
+    assert out == "[a](/x.md#h) [b](/z/y.md)"

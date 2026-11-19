@@ -15,10 +15,19 @@ from okf_core.document import (
     OKFDocument,
     OKFDocumentError,
 )
+from okf_core.export import export_subtree
 from okf_core.index import regenerate_indexes
-from okf_core.links import rewrite_link_ids, rewrite_links, strip_link_ids, strip_links
+from okf_core.links import (
+    map_absolute_links,
+    rewrite_link_ids,
+    rewrite_links,
+    strip_link_ids,
+    strip_links,
+)
 from okf_core.paths import (
     concept_id_to_path,
+    is_hidden,
+    iter_visible_files,
     parse_concept_id,
     path_to_concept_id,
 )
@@ -32,7 +41,6 @@ from okf_core.storage import (
 )
 from okf_core.synthesizer import fallback_synthesizer
 from okf_core.workspace import (
-    MAX_DESCRIPTION_CHARS,
     METADATA_DIR,
     WORKSPACE_COLORS,
     WORKSPACE_FILE,
@@ -52,6 +60,8 @@ __all__ = [
     "rewrite_link_ids",
     "strip_links",
     "strip_link_ids",
+    "map_absolute_links",
+    "export_subtree",
     "Storage",
     "Entry",
     "LocalStorage",
@@ -62,11 +72,12 @@ __all__ = [
     "OKFDocumentError",
     "REQUIRED_FRONTMATTER_KEYS",
     "concept_id_to_path",
+    "is_hidden",
+    "iter_visible_files",
     "parse_concept_id",
     "path_to_concept_id",
     "regenerate_indexes",
     "fallback_synthesizer",
-    "MAX_DESCRIPTION_CHARS",
     "METADATA_DIR",
     "WORKSPACE_COLORS",
     "WORKSPACE_FILE",

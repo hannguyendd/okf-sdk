@@ -22,6 +22,7 @@ from typing import Any
 import yaml
 
 from okf_core.constants import INDEX_FILENAME, LOG_FILENAME
+from okf_core.paths import iter_visible_files
 from okf_core.storage import Storage, open_storage
 
 _FRONTMATTER_DELIM = "---"
@@ -156,7 +157,7 @@ def validate_bundle(root: Path | str | Storage) -> list[Violation]:
     if not storage.is_dir(""):
         raise FileNotFoundError(f"Bundle directory not found: {storage.location}")
     violations: list[Violation] = []
-    for rel in storage.iter_files(suffix=".md"):
+    for rel in iter_visible_files(storage, suffix=".md"):
         name = rel.rsplit("/", 1)[-1]
         try:
             text = storage.read_text(rel)

@@ -3,20 +3,14 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
-from okf_claude import hooks, installer
+from okf_claude import episodes, hooks, installer
 
 
 def _target_args(p: argparse.ArgumentParser, required: bool) -> None:
-    p.add_argument("--workspace", "-w", default=os.environ.get("OKF_WORKSPACE"),
-                   required=required and not os.environ.get("OKF_WORKSPACE"),
-                   help="OKF workspace (default: $OKF_WORKSPACE)")
-    p.add_argument("--bundle", "-b", default=os.environ.get("OKF_BUNDLE"),
-                   required=required and not os.environ.get("OKF_BUNDLE"),
-                   help="bundle inside the workspace (default: $OKF_BUNDLE)")
+    p.add_argument("--workspace", "-w", required=required, help="OKF workspace")
 
 
 def _env_pairs(values: list[str]) -> dict[str, str]:
@@ -46,7 +40,7 @@ def _parser() -> argparse.ArgumentParser:
     setup.add_argument("--server-env", action="append", default=[], metavar="KEY=VALUE",
                        help="extra env for the MCP server, e.g. OKF_EMBEDDING_URL=... (repeatable)")
     setup.add_argument("--no-create", action="store_true",
-                       help="fail instead of creating a missing workspace/bundle")
+                       help="fail instead of creating a missing workspace")
     setup.add_argument("--no-mcp", action="store_true", help="skip registering the MCP server")
 
     rm = sub.add_parser("uninstall", help="remove what setup installed")
@@ -74,11 +68,19 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
-    args = _parser().parse_args(argv)
+    parser = _parser()
+    args, unknown = parser.parse_known_args(argv)
+    if unknown:
+        if args.command == "hook":
+            # Hooks never fail a session: an install from before bundles were
+            # removed still passes --bundle.
+            episodes.log(f"ignoring stale hook arguments {unknown}; re-run okf-claude setup")
+        else:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
 
     if args.command == "setup":
         cfg = installer.InstallConfig(
-            project=args.project, workspace=args.workspace, bundle=args.bundle,
+            project=args.project, workspace=args.workspace,
             scope=args.scope, model=args.model, recent=args.recent,
             server_env=_env_pairs(args.server_env),
         )
@@ -100,11 +102,11 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.command == "hook":
         if args.event == "session-start":
-            raise SystemExit(hooks.session_start(args.workspace, args.bundle, recent=args.recent))
-        raise SystemExit(hooks.session_end(args.workspace, args.bundle, model=args.model))
+            raise SystemExit(hooks.session_start(args.workspace, recent=args.recent))
+        raise SystemExit(hooks.session_end(args.workspace, model=args.model))
 
     if args.command == "episode":
         raise SystemExit(hooks.episode(
-            workspace=args.workspace, bundle=args.bundle, transcript_path=args.transcript,
+            workspace=args.workspace, transcript_path=args.transcript,
             session_id=args.session_id, cwd=args.cwd, reason=args.reason, model=args.model,
         ))

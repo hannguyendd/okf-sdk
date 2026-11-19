@@ -13,10 +13,10 @@ def okf_home(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def bundle(okf_home):
+def storage(okf_home):
     reg = WorkspaceRegistry()
     ws = reg.create("team")
-    return ws.create_index("notes")
+    return ws.storage
 
 
 def _entry(kind, content, ts, **extra):
