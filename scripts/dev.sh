@@ -20,7 +20,8 @@
 #
 # Ports: defaults sit in an uncommon range; a busy default moves to the next
 # free port. A port you set (MCP_PORT, BE_PORT, WEB_PORT) is used as is, and
-# the script stops if it is taken. OKF_HOME, OKF_WORKSPACE, OKF_BUNDLE and the
+# the script stops if it is taken; set them in the shell or the repo-root
+# .env (the shell wins). OKF_HOME, OKF_WORKSPACE, OKF_BUNDLE and the
 # OKF_EMBEDDING_* variables pass through (or put them in the repo-root .env).
 set -euo pipefail
 
@@ -45,7 +46,7 @@ while [[ $# -gt 0 ]]; do
     -f|--foreground) DETACH=0; shift ;;
     -d|--detach) DETACH=1; shift ;;
     --read-only) BE_ARGS+=(--read-only); shift ;;
-    -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "error: unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -73,6 +74,17 @@ if [[ "$CMD" != start ]]; then
 fi
 
 # --- start ------------------------------------------------------------------
+
+# Ports may come from the repo-root .env; a value in the shell wins.
+for key in MCP_PORT BE_PORT WEB_PORT; do
+  if [[ -z "${!key:-}" && -f "$ROOT/.env" ]]; then
+    val="$(sed -n "s/^[[:space:]]*$key[[:space:]]*=[[:space:]]*//p" "$ROOT/.env" | tail -n 1 | tr -d "\"' \r")"
+    [[ -n "$val" ]] && printf -v "$key" '%s' "$val"
+  fi
+done
+for key in MCP_PORT BE_PORT WEB_PORT; do
+  [[ -z "${!key:-}" || "${!key}" =~ ^[0-9]+$ ]] || { echo "error: $key must be a number, got '${!key}'" >&2; exit 2; }
+done
 
 case "$WEB" in
   web2) WEB_DIR="$ROOT/packages/okf-web2"; WEB_DIST="$WEB_DIR/dist" ;;
