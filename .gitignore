@@ -11,3 +11,6 @@ wheels/
 
 # Local environment overrides (templates like .env.example are committed)
 .env
+
+# scripts/dev.sh --detach state (logs, pids)
+.okf-dev/

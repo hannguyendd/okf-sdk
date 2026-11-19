@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+# Launch the OKF stack: MCP server, REST backend, and the web portal.
+# By default it builds the frontend (prod) and runs in the background.
+#
+#   scripts/dev.sh [--only mcp,be,web] [--dev] [-f] [--read-only]
+#   scripts/dev.sh stop | status
+#
+#   mcp  okf-mcp over streamable-http   http://127.0.0.1:$MCP_PORT/mcp  (default 47800)
+#        clients pick the workspace with the X-OKF-Workspace header
+#   be   okf-backend API, serving the UI http://127.0.0.1:$BE_PORT      (default 47801)
+#   web  the okf-web portal (packages/okf-web)
+#
+#   (default)        prod: build the frontend once and let the backend serve
+#                    it at the be URL; `web` implies `be`.
+#   --dev            run the frontend dev server instead (hot reload) at
+#                    http://localhost:$WEB_PORT (default 47802).
+#   (default)        background: logs and pids go to .okf-dev/; `stop` ends
+#                    the run, `status` shows what is up.
+#   -f, --foreground stay attached with tagged output; Ctrl-C stops
+#                    everything, and if one service exits the rest stop too.
+#
+# Ports: defaults sit in an uncommon range; a busy default moves to the next
+# free port. A port you set (MCP_PORT, BE_PORT, WEB_PORT) is used as is, and
+# the script stops if it is taken; set them in the shell or the repo-root
+# .env (the shell wins). OKF_HOME and the OKF_EMBEDDING_* variables pass
+# through (OKF_EMBEDDING_* may also go in the repo-root .env).
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+STATE="$ROOT/.okf-dev"
+ONLY="mcp,be,web"
+PROD=1
+DETACH=1
+CMD=start
+BE_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    stop|status) CMD="$1"; shift ;;
+    --only) ONLY="$2"; shift 2 ;;
+    --dev) PROD=0; shift ;;
+    --prod) PROD=1; shift ;;
+    -f|--foreground) DETACH=0; shift ;;
+    -d|--detach) DETACH=1; shift ;;
+    --read-only) BE_ARGS+=(--read-only); shift ;;
+    -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "error: unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
+
+# --- stop / status of a detached run ----------------------------------------
+
+alive() { kill -0 "$1" 2>/dev/null; }
+
+if [[ "$CMD" != start ]]; then
+  shopt -s nullglob
+  files=("$STATE"/*.pid)
+  if [[ ${#files[@]} -eq 0 ]]; then echo "nothing running (no detached run)"; exit 0; fi
+  for f in "${files[@]}"; do
+    name="$(basename "$f" .pid)"; read -r pid url < "$f"
+    if [[ "$CMD" == stop ]]; then
+      if alive "$pid"; then kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true; fi
+      rm -f "$f"; echo "stopped $name"
+    elif alive "$pid"; then
+      echo "$name  up    $url  (pid $pid, log .okf-dev/$name.log)"
+    else
+      echo "$name  down  (log .okf-dev/$name.log)"
+    fi
+  done
+  exit 0
+fi
+
+# --- start ------------------------------------------------------------------
+
+# Ports may come from the repo-root .env; a value in the shell wins.
+for key in MCP_PORT BE_PORT WEB_PORT; do
+  if [[ -z "${!key:-}" && -f "$ROOT/.env" ]]; then
+    val="$(sed -n "s/^[[:space:]]*$key[[:space:]]*=[[:space:]]*//p" "$ROOT/.env" | tail -n 1 | tr -d "\"' \r")"
+    [[ -n "$val" ]] && printf -v "$key" '%s' "$val"
+  fi
+done
+for key in MCP_PORT BE_PORT WEB_PORT; do
+  [[ -z "${!key:-}" || "${!key}" =~ ^[0-9]+$ ]] || { echo "error: $key must be a number, got '${!key}'" >&2; exit 2; }
+done
+
+WEB_DIR="$ROOT/packages/okf-web"
+WEB_DIST="$WEB_DIR/dist"
+
+want() { [[ ",$ONLY," == *",$1,"* ]]; }
+
+# In prod the backend serves the built UI, so `web` means "build, then be".
+if (( PROD )) && want web && ! want be; then ONLY+=",be"; fi
+
+if (( DETACH )); then
+  shopt -s nullglob
+  for f in "$STATE"/*.pid; do
+    read -r pid _ < "$f"
+    if alive "$pid"; then echo "error: already running in the background (scripts/dev.sh status / stop, or -f for a foreground run)" >&2; exit 1; fi
+  done
+  shopt -u nullglob
+fi
+
+# True if something is listening on the port (IPv4 or IPv6 loopback).
+port_busy() {
+  if command -v lsof >/dev/null; then
+    lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+  else
+    (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null
+  fi
+}
+
+TAKEN=" "
+# pick_port NAME VAR DEFAULT: an explicit $VAR must be free; otherwise the
+# first free port from DEFAULT up, skipping ports already picked here.
+pick_port() {
+  local name="$1" var="$2" port="${!2:-}"
+  if [[ -n "$port" ]]; then
+    if port_busy "$port"; then
+      echo "error: $var=$port is already in use (needed by $name)" >&2; exit 1
+    fi
+  else
+    port="$3"
+    while port_busy "$port" || [[ "$TAKEN" == *" $port "* ]]; do
+      port=$((port + 1))
+      (( port <= $3 + 100 )) || { echo "error: no free port near $3 for $name" >&2; exit 1; }
+    done
+    [[ "$port" == "$3" ]] || echo "$name: port $3 is in use, using $port" >&2
+  fi
+  TAKEN+="$port "
+  printf -v "$var" '%s' "$port"
+}
+
+# The dev frontend proxies to BE_PORT, so pick it even when only `web` runs.
+want mcp && pick_port mcp MCP_PORT 47800
+if want be; then pick_port be BE_PORT 47801; else BE_PORT="${BE_PORT:-47801}"; fi
+want web && (( ! PROD )) && pick_port web WEB_PORT 47802
+
+command -v uv >/dev/null || { echo "error: uv is required" >&2; exit 1; }
+if want web; then
+  command -v bun >/dev/null || { echo "error: bun is required for the frontend" >&2; exit 1; }
+fi
+
+if want mcp || want be; then
+  uv sync --quiet
+fi
+if want web && [[ ! -d "$WEB_DIR/node_modules" ]]; then
+  (cd "$WEB_DIR" && bun install)
+fi
+if want web && (( PROD )); then
+  echo "building the okf-web portal…"
+  (cd "$WEB_DIR" && bun run build)
+  BE_ARGS+=(--static "$WEB_DIST")
+fi
+
+# Job control puts each service in its own process group, so stopping it
+# ends the whole tree (uv → python, bun → vite) without signalling our caller.
+set -m
+PIDS=()
+NAMES=()
+URLS=()
+
+if (( DETACH )); then
+  mkdir -p "$STATE"
+  rm -f "$STATE"/*.pid
+else
+  cleanup() {
+    trap - INT TERM EXIT
+    for pid in "${PIDS[@]:-}"; do
+      [[ -n "$pid" ]] && kill -TERM -- "-$pid" 2>/dev/null || true
+    done
+    wait 2>/dev/null || true
+  }
+  trap cleanup EXIT
+  trap 'exit 130' INT TERM   # exit runs cleanup via the EXIT trap
+fi
+
+# run NAME COLOR URL CMD...: start a service in the background. Foreground runs
+# prefix each output line with a coloured tag; detached runs log to .okf-dev/.
+run() {
+  local name="$1" color="$2" url="$3"; shift 3
+  if (( DETACH )); then
+    nohup "$@" > "$STATE/$name.log" 2>&1 < /dev/null &
+    echo "$! $url" > "$STATE/$name.pid"
+  else
+    (
+      exec "$@" 2>&1 | while IFS= read -r line; do
+        printf '\033[%sm[%s]\033[0m %s\n' "$color" "$name" "$line"
+      done
+    ) &
+  fi
+  PIDS+=("$!"); NAMES+=("$name"); URLS+=("$url")
+}
+
+if want mcp; then
+  run mcp 35 "http://127.0.0.1:$MCP_PORT/mcp" \
+    uv run okf-mcp --transport streamable-http --port "$MCP_PORT"
+fi
+if want be; then
+  BE_URL="http://127.0.0.1:$BE_PORT"
+  (( PROD )) && want web && BE_URL+="  (serves the portal)"
+  run be 36 "$BE_URL" uv run okf-backend --port "$BE_PORT" ${BE_ARGS[@]+"${BE_ARGS[@]}"}
+fi
+if want web && (( ! PROD )); then
+  run web 33 "http://localhost:$WEB_PORT" \
+    env OKF_API="http://127.0.0.1:$BE_PORT" \
+    bash -c "cd '$WEB_DIR' && exec bun run dev --port $WEB_PORT --strictPort"
+fi
+
+[[ ${#PIDS[@]} -gt 0 ]] || { echo "nothing to run (--only $ONLY)" >&2; exit 2; }
+set +m   # groups are already assigned; this just silences job notices
+
+for i in "${!NAMES[@]}"; do printf '%-4s → %s\n' "${NAMES[$i]}" "${URLS[$i]}"; done
+
+if (( DETACH )); then
+  sleep 3
+  failed=0
+  for i in "${!NAMES[@]}"; do
+    if ! alive "${PIDS[$i]}"; then
+      echo "error: ${NAMES[$i]} exited; see .okf-dev/${NAMES[$i]}.log" >&2; failed=1
+    fi
+  done
+  if (( failed )); then "$0" stop >/dev/null; exit 1; fi
+  echo "running in the background — logs in .okf-dev/, stop with: scripts/dev.sh stop"
+  exit 0
+fi
+
+# Stop everything as soon as any one service exits (bash 4.3+ has `wait -n`;
+# macOS /bin/bash 3.2 polls instead).
+if (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 3) )); then
+  wait -n || true
+else
+  while :; do
+    for pid in "${PIDS[@]}"; do alive "$pid" || break 2; done
+    sleep 1
+  done
+fi
+echo "a service exited; stopping the rest" >&2
