@@ -1,25 +1,27 @@
 #!/usr/bin/env bash
 # Launch the OKF stack: MCP server, web API (backend), and web frontend.
+# By default it builds the frontend (prod) and runs in the background.
 #
-#   scripts/dev.sh [--only mcp,be,web] [--web web2|web] [--prod] [-d] [--read-only]
+#   scripts/dev.sh [--only mcp,be,web] [--web web2|web] [--dev] [-f] [--read-only]
 #   scripts/dev.sh stop | status
 #
 #   mcp  okf-mcp over streamable-http   http://127.0.0.1:$MCP_PORT/mcp  (default 47800)
-#   be   okf-web API                    http://127.0.0.1:$BE_PORT       (default 47801)
-#   web  frontend dev server            http://localhost:$WEB_PORT      (default 47802)
-#        okf-web2 (Vite) by default, or the okf-web frontend with --web web
+#   be   okf-web API, serving the UI    http://127.0.0.1:$BE_PORT       (default 47801)
+#   web  okf-web2 by default, or the okf-web frontend with --web web
 #
-#   --prod        build the frontend once and let the backend serve it (no
-#                 dev server; the UI is at the be URL). `web` implies `be`.
-#   -d, --detach  run in the background; logs and pids go to .okf-dev/.
-#                 `stop` ends a detached run, `status` shows what is up.
+#   (default)        prod: build the frontend once and let the backend serve
+#                    it at the be URL; `web` implies `be`.
+#   --dev            run the frontend dev server instead (hot reload) at
+#                    http://localhost:$WEB_PORT (default 47802).
+#   (default)        background: logs and pids go to .okf-dev/; `stop` ends
+#                    the run, `status` shows what is up.
+#   -f, --foreground stay attached with tagged output; Ctrl-C stops
+#                    everything, and if one service exits the rest stop too.
 #
 # Ports: defaults sit in an uncommon range; a busy default moves to the next
 # free port. A port you set (MCP_PORT, BE_PORT, WEB_PORT) is used as is, and
 # the script stops if it is taken. OKF_HOME, OKF_WORKSPACE, OKF_BUNDLE and the
 # OKF_EMBEDDING_* variables pass through (or put them in the repo-root .env).
-# In the foreground, Ctrl-C stops everything; if one service exits, the rest
-# are stopped too.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -28,8 +30,8 @@ cd "$ROOT"
 STATE="$ROOT/.okf-dev"
 ONLY="mcp,be,web"
 WEB="web2"
-PROD=0
-DETACH=0
+PROD=1
+DETACH=1
 CMD=start
 BE_ARGS=()
 
@@ -38,10 +40,12 @@ while [[ $# -gt 0 ]]; do
     stop|status) CMD="$1"; shift ;;
     --only) ONLY="$2"; shift 2 ;;
     --web) WEB="$2"; shift 2 ;;
+    --dev) PROD=0; shift ;;
     --prod) PROD=1; shift ;;
+    -f|--foreground) DETACH=0; shift ;;
     -d|--detach) DETACH=1; shift ;;
     --read-only) BE_ARGS+=(--read-only); shift ;;
-    -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "error: unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -85,7 +89,7 @@ if (( DETACH )); then
   shopt -s nullglob
   for f in "$STATE"/*.pid; do
     read -r pid _ < "$f"
-    if alive "$pid"; then echo "error: a detached run is already up (scripts/dev.sh status / stop)" >&2; exit 1; fi
+    if alive "$pid"; then echo "error: already running in the background (scripts/dev.sh status / stop, or -f for a foreground run)" >&2; exit 1; fi
   done
   shopt -u nullglob
 fi
