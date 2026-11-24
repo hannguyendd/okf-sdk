@@ -168,7 +168,7 @@ def test_session_start_several_workspaces(okf_home):
     assert "- `backend`: server `okf-backend`, tools `mcp__okf-backend__*`" in ctx
     assert "## Workspace `backend` (`mcp__okf-backend__*`)" in ctx and "Backend service rules." in ctx
     assert "## Workspace `team` (`mcp__okf-team__*`)" in ctx and "Team-wide conventions." in ctx
-    assert "`mcp__<server>__search`" in ctx and "mcp__okf__" not in ctx
+    assert "`mcp__<server>__search(query)`" in ctx and "mcp__okf__" not in ctx
     assert "## Recent sessions in `team`" in ctx and "Team sync" in ctx and "Backend work" not in ctx
     assert "`episodes/` in `team`" in ctx
     assert "{{" not in ctx
@@ -177,7 +177,7 @@ def test_session_start_several_workspaces(okf_home):
 def test_session_start_single_workspace_unchanged_naming(storage):
     ctx = _ctx(["team"])
     assert "workspace `team`, served by the `okf` MCP server" in ctx
-    assert "`mcp__okf__search`" in ctx and "Workspace `team`" not in ctx
+    assert "`mcp__okf__search(query)`" in ctx and "Workspace `team`" not in ctx
 
 
 def test_session_start_several_with_one_missing_still_works(storage):

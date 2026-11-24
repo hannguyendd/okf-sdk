@@ -8,9 +8,13 @@ task. If the task touches a topic it covers, consult it before non-trivial work;
 if the task is unrelated (a one-off question, a different project), skip it and
 do not call OKF tools just to look.
 {{choose}}
-- To look something up: `{{prefix}}search` for a question in plain words (needs
-  embeddings; if it errors, browse with `{{prefix}}read_index` on a directory
-  from the overview, then `{{prefix}}list` / `{{prefix}}get`).
+- To look something up: `{{prefix}}search(query)` for a question in plain words
+  (needs embeddings; if it errors, browse with `{{prefix}}read_index(dir)` on a
+  directory from the overview, then `{{prefix}}list(prefix)` /
+  `{{prefix}}get(concept_id)`). `get` reads one concept (e.g.
+  `decisions/use-sqlite-vec`), never a directory: for a directory such as
+  `decisions`, use `read_index(dir="decisions")` or `list(prefix="decisions/")`.
+  The OKF tools may be deferred: load their schemas before the first call.
 - When you learn something durable (a decision and its reason, a convention, a
   gotcha, how a subsystem works), save it with `{{prefix}}add`, or
   `{{prefix}}patch` the concept that already covers it. Do not save secrets,
