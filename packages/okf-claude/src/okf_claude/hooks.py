@@ -14,16 +14,21 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Callable, TextIO
+
+from okf_core import INDEX_FILENAME, OKFDocument, Storage
+
 
 from okf_claude import episodes, transcript
 from okf_claude.episodes import CHILD_ENV, Summary, log
 
 MIN_USER_PROMPTS = 2
 BODY_PREVIEW_CHARS = 1500
+OVERVIEW_CHARS = 3000
 
 
 def _read_event(stdin: TextIO) -> dict:
@@ -34,7 +39,46 @@ def _read_event(stdin: TextIO) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def build_context(workspace: str, recent: list[dict]) -> str:
+def root_overview(storage: Storage) -> dict:
+    """The workspace root ``_index.md``: ``{description, listing}`` (either may be "").
+
+    ``description`` is the authored frontmatter description of the workspace;
+    ``listing`` is the generated body (subdirectories and concepts with their
+    descriptions). The agent reads both at session start to decide whether the
+    memory is relevant to the task before calling any tool.
+    """
+    if not storage.exists(INDEX_FILENAME):
+        return {"description": "", "listing": ""}
+    doc = OKFDocument.parse(storage.read_text(INDEX_FILENAME))
+    desc = doc.frontmatter.get("description")
+    return {
+        "description": desc.strip() if isinstance(desc, str) else "",
+        "listing": doc.body.strip(),
+    }
+
+
+def _overview_text(overview: dict | None) -> str:
+    if not overview or not (overview["description"] or overview["listing"]):
+        return (
+            "\n## What this memory holds\n\nNo overview is available: the root `_index.md` is missing or unreadable "
+            "(a new workspace is empty).\n"
+        )
+    lines = ["", "## What this memory holds", ""]
+    if overview["description"]:
+        lines += [overview["description"], ""]
+    listing = overview["listing"]
+    if listing:
+        if len(listing) > OVERVIEW_CHARS:
+            listing = listing[:OVERVIEW_CHARS].rstrip() + (
+                "\n\n[... truncated; `mcp__okf__read_index` for the rest]"
+            )
+        # Demote the listing's headings below this section's.
+        listing = re.sub(r"(?m)^(#{1,4}) ", lambda m: "#" * (len(m.group(1)) + 2) + " ", listing)
+        lines += [listing, ""]
+    return "\n".join(lines)
+
+
+def build_context(workspace: str, recent: list[dict], overview: dict | None = None) -> str:
     if recent:
         lines = ["", "## Recent sessions (newest first)", ""]
         for e in recent:
@@ -52,6 +96,7 @@ def build_context(workspace: str, recent: list[dict]) -> str:
     text = episodes.prompt_text("session_start.md")
     return (
         text.replace("{{workspace}}", workspace)
+        .replace("{{overview}}", _overview_text(overview))
         .replace("{{recent}}", recent_text)
         .rstrip()
         + "\n"
@@ -65,16 +110,25 @@ def session_start(
         return 0
     try:
         event = _read_event(stdin)
+        items: list[dict] = []
+        overview: dict | None = None
         try:
             storage = episodes.workspace_storage(workspace)
-            items = episodes.recent_episodes(storage, project=event.get("cwd"), limit=recent)
         except Exception as exc:  # missing workspace etc.: still give guidance
-            log(f"session-start: could not read episodes: {exc}")
-            items = []
+            log(f"session-start: could not open workspace: {exc}")
+        else:
+            try:
+                overview = root_overview(storage)
+            except Exception as exc:
+                log(f"session-start: could not read root _index.md: {exc}")
+            try:
+                items = episodes.recent_episodes(storage, project=event.get("cwd"), limit=recent)
+            except Exception as exc:
+                log(f"session-start: could not read episodes: {exc}")
         output = {
             "hookSpecificOutput": {
                 "hookEventName": "SessionStart",
-                "additionalContext": build_context(workspace, items),
+                "additionalContext": build_context(workspace, items, overview),
             }
         }
         stdout.write(json.dumps(output))

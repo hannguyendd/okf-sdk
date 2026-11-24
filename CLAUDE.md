@@ -96,7 +96,9 @@ directory's `_index.md`).
 `uninstall` register the `okf` MCP server (`claude mcp add okf --
 okf-mcp --workspace <ws>`), write SessionStart/SessionEnd hooks into a Claude
 Code settings file, and copy the `/okf-remember` and `/okf-recall` slash
-commands. SessionStart injects guidance plus recent **episodes**; SessionEnd
+commands. SessionStart injects the root `_index.md` (workspace description +
+top-level listing, so the agent can judge whether the memory is relevant),
+guidance, and recent **episodes**; SessionEnd
 spawns a detached `claude -p` summarizer that writes an
 `episodes/<date>-<session8>` concept (type `episode`) at the workspace root.
 Hooks never fail a session — errors go to `<OKF_HOME>/logs/okf-claude.log`;

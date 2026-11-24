@@ -115,3 +115,30 @@ def test_episode_on_v1_workspace_writes_nothing_and_logs(okf_home, transcript_fi
     assert rc == 1 and called == []  # fails before spending a summarizer call
     assert "okf-migrate-v2" in episodes.log_path().read_text()
     assert [p.name for p in ws.iterdir()] == [".okf"]
+
+
+def test_session_start_includes_root_description_and_listing(storage):
+    from okf_backend import operations
+
+    operations.create_directory(storage, "decisions", "Architecture decisions and why.")
+    operations.describe_directory(storage, "", "Memory for the widget repo.")
+    _, out = _start({"cwd": "/p"})
+    ctx = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+    assert "## What this memory holds" in ctx
+    assert "Memory for the widget repo." in ctx
+    assert "[decisions](decisions/_index.md)" in ctx and "Architecture decisions and why." in ctx
+    assert "### Subdirectories" in ctx  # listing headings demoted under the section
+    assert ctx.index("What this memory holds") < ctx.index("When to use it")
+    assert "{{" not in ctx
+
+
+def test_session_start_empty_workspace_says_so(storage):
+    _, out = _start({})
+    ctx = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+    assert "No overview is available" in ctx
+
+
+def test_session_start_bad_root_index_still_succeeds(storage):
+    storage.write_text("_index.md", "---\n: [unclosed\n---\nbody")
+    rc, out = _start({})
+    assert rc == 0 and "When to use it" in json.loads(out)["hookSpecificOutput"]["additionalContext"]
