@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Set up OKF memory for Claude Code in a project.
 #
-#   scripts/setup-claude-code.sh --workspace <ws> [--project <dir>] [options]
+#   scripts/setup-claude-code.sh --workspace <ws> [--workspace <ws2> ...] [--project <dir>] [options]
 #
 # Syncs the okf-sdk environment, then runs `okf-claude setup` (see
 # packages/okf-claude/README.md, or pass --help). --project defaults to the

@@ -92,17 +92,22 @@ directories are created with `operations.create_directory` (writes the
 directory's `_index.md`).
 
 **`packages/okf-claude`** — Claude Code integration (`okf-claude` CLI):
-`setup --workspace <ws> [--no-create] [--scope local|project|user]` and
-`uninstall` register the `okf` MCP server (`claude mcp add okf --
-okf-mcp --workspace <ws>`), write SessionStart/SessionEnd hooks into a Claude
+`setup --workspace <ws> [--workspace <ws2> ...] [--episodes <ws>] [--no-create]
+[--scope local|project|user]` and `uninstall` register one MCP server per
+workspace (`okf` for a single workspace, `okf-<ws>` for several; naming in
+`okf_claude.servers`), write SessionStart/SessionEnd hooks into a Claude
 Code settings file, and copy the `/okf-remember` and `/okf-recall` slash
-commands. SessionStart injects guidance plus recent **episodes**; SessionEnd
+commands. SessionStart injects the root `_index.md` (workspace description +
+top-level listing, so the agent can judge whether the memory is relevant) of
+each workspace, guidance, and recent **episodes** from the episodes workspace
+(first `--workspace` unless `--episodes`); SessionEnd
 spawns a detached `claude -p` summarizer that writes an
 `episodes/<date>-<session8>` concept (type `episode`) at the workspace root.
 Hooks never fail a session — errors go to `<OKF_HOME>/logs/okf-claude.log`;
 `OKF_CLAUDE_CHILD=1` stops recursion. Prompts live in
 `src/okf_claude/prompts/`. Entry script: `scripts/setup-claude-code.sh`. See
-`docs/superpowers/specs/2026-11-13-okf-claude-code-integration-design.md`.
+`docs/superpowers/specs/2026-11-13-okf-claude-code-integration-design.md` and
+`docs/superpowers/specs/2026-11-24-okf-claude-multi-workspace-design.md`.
 
 **Storage.** All file access in every package goes through the
 `okf_core.Storage` interface (`read_text`/`write_text`/`delete`/`move`/
