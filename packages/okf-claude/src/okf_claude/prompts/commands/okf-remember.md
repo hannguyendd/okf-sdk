@@ -9,11 +9,15 @@ If nothing is given above, pick the most important durable knowledge from this
 conversation so far (decisions and their reasons, conventions, gotchas, how
 something works) and save that.
 
-1. Look for a concept that already covers it: `mcp__okf__search` with a short
-   query (if search is unavailable, use `mcp__okf__read_index` and
-   `mcp__okf__list`). If one fits, `mcp__okf__get` it and update it with
-   `mcp__okf__patch` instead of creating a duplicate.
-2. Otherwise create it with `mcp__okf__add`. Choose a `concept_id` that fits the
+Use the OKF MCP tools named in this session's "OKF memory" context: `mcp__okf__*`
+for a single workspace, or `mcp__okf-<workspace>__*` when several are
+configured. With several, save to the workspace whose overview the knowledge
+belongs to; if that is unclear, ask the user before writing.
+
+1. Look for a concept that already covers it: `search` with a short query (if
+   search is unavailable, use `read_index` and `list`). If one fits, `get` it
+   and update it with `patch` instead of creating a duplicate.
+2. Otherwise create it with `add`. Choose a `concept_id` that fits the
    workspace's existing layout (`read_index` shows it; segments use letters,
    digits, `_`, `.`, `-`), e.g. `decisions/use-sqlite-vec`. Frontmatter: `type`
    (e.g. `decision`, `convention`, `howto`, `gotcha`, `reference`), `title`, a
@@ -23,4 +27,5 @@ something works) and save that.
 3. Never save secrets, credentials, or personal data. Do not write under
    `episodes/` (those are written automatically).
 
-Finish with one line per concept: the id, and whether it was added or updated.
+Finish with one line per concept: the workspace and id, and whether it was
+added or updated.
