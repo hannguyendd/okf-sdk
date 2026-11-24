@@ -13,6 +13,14 @@ def _target_args(p: argparse.ArgumentParser, required: bool) -> None:
     p.add_argument("--workspace", "-w", required=required, help="OKF workspace")
 
 
+def _workspaces_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--workspace", "-w", dest="workspaces", action="append", required=True,
+                   metavar="WORKSPACE",
+                   help="OKF workspace; repeat for several (the first is the primary one)")
+    p.add_argument("--episodes", metavar="WORKSPACE",
+                   help="workspace that holds session episodes (default: the first --workspace)")
+
+
 def _env_pairs(values: list[str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for item in values:
@@ -27,8 +35,8 @@ def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="okf-claude", description="Claude Code integration for OKF")
     sub = p.add_subparsers(dest="command", required=True)
 
-    setup = sub.add_parser("setup", help="install MCP server, hooks, and slash commands")
-    _target_args(setup, required=True)
+    setup = sub.add_parser("setup", help="install MCP server(s), hooks, and slash commands")
+    _workspaces_args(setup)
     setup.add_argument("--project", type=Path, default=Path.cwd(),
                        help="project directory (default: current directory)")
     setup.add_argument("--scope", choices=installer.SCOPES, default="local",
@@ -51,7 +59,7 @@ def _parser() -> argparse.ArgumentParser:
     hook = sub.add_parser("hook", help="Claude Code hook entry points (reads the event on stdin)")
     hook_sub = hook.add_subparsers(dest="event", required=True)
     start = hook_sub.add_parser("session-start")
-    _target_args(start, required=True)
+    _workspaces_args(start)
     start.add_argument("--recent", type=int, default=5)
     end = hook_sub.add_parser("session-end")
     _target_args(end, required=True)
@@ -79,12 +87,12 @@ def main(argv: list[str] | None = None) -> None:
             parser.error(f"unrecognized arguments: {' '.join(unknown)}")
 
     if args.command == "setup":
-        cfg = installer.InstallConfig(
-            project=args.project, workspace=args.workspace,
-            scope=args.scope, model=args.model, recent=args.recent,
-            server_env=_env_pairs(args.server_env),
-        )
         try:
+            cfg = installer.InstallConfig(
+                project=args.project, workspaces=args.workspaces, episodes=args.episodes,
+                scope=args.scope, model=args.model, recent=args.recent,
+                server_env=_env_pairs(args.server_env),
+            )
             done = installer.install(cfg, create=not args.no_create, mcp=not args.no_mcp)
         except (FileNotFoundError, RuntimeError, ValueError) as exc:
             print(f"okf-claude setup: {exc}", file=sys.stderr)
@@ -102,7 +110,9 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.command == "hook":
         if args.event == "session-start":
-            raise SystemExit(hooks.session_start(args.workspace, recent=args.recent))
+            raise SystemExit(hooks.session_start(
+                args.workspaces, episodes_workspace=args.episodes, recent=args.recent,
+            ))
         raise SystemExit(hooks.session_end(args.workspace, model=args.model))
 
     if args.command == "episode":
