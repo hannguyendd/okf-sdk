@@ -7,7 +7,8 @@ Shared backend for OKF tooling. It holds:
 - `okf_backend.embeddings`, `okf_backend.vector_store` and search (embeddings
   plus sqlite-vec, stored in the workspace's `.okf/vectors.db`);
 - `okf_backend.settings.BackendSettings` (`OKF_EMBEDDING_*` environment
-  configuration, see `.env.example`);
+  configuration from the environment, `./.env`, then `<OKF_HOME>/.env`; see
+  `.env.example`);
 - the REST API (Starlette) under `/api/workspaces/{ws}/...`, with no index or
   bundle segment: `concepts/...`, `dirs/...`, `search?paths=`, `color`.
 

@@ -127,7 +127,11 @@ def test_search_passes_paths(home, monkeypatch):
     assert (seen["config"].url, seen["config"].model) == ("http://h/v1", "m")
 
 
-def test_search_without_embedding_settings_errors_but_other_tools_work(home):
+def test_search_without_embedding_settings_errors_but_other_tools_work(home, tmp_path, monkeypatch):
+    # Keep the repo's own .env and the developer's shell out of this test.
+    monkeypatch.chdir(tmp_path)
+    for key in ("OKF_EMBEDDING_URL", "OKF_EMBEDDING_MODEL"):
+        monkeypatch.delenv(key, raising=False)
     with pytest.raises(ValueError, match="OKF_EMBEDDING_URL"):
         run(server.search(_ctx(H), "anything"))
     assert run(server.list_(_ctx(H)))["items"] == []

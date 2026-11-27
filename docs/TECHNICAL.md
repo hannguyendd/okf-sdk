@@ -74,6 +74,10 @@ Environment:
 | `OKF_HOME` | `~/.okf` | where workspaces live |
 | `OKF_EMBEDDING_URL` / `OKF_EMBEDDING_MODEL` | unset | an OpenAI-compatible embeddings server; enables search |
 
+`OKF_EMBEDDING_*` may also come from a dotenv file: `./.env` (the directory the
+command starts in) beats `<OKF_HOME>/.env`, and a real environment variable
+beats both. `OKF_HOME` itself is never read from a dotenv file.
+
 Frontend development with hot reload:
 
 ```bash
