@@ -46,7 +46,8 @@ listing*; *index* and *bundle* no longer name a top-level directory.
 **`packages/okf-backend`** — the shared backend: `okf_backend.operations`
 (add, patch, move, delete, describe, mkdir, reindex, get/list/read_index),
 semantic search (embeddings + sqlite-vec in `.okf/vectors.db`, synced lazily
-at search time), `BackendSettings` (`OKF_EMBEDDING_*`), and the Starlette REST
+at search time), `BackendSettings` (`OKF_EMBEDDING_*`; env > `./.env` >
+`<OKF_HOME>/.env`), and the Starlette REST
 API under `/api/workspaces/{ws}/...` (no index segment: `concepts/...`,
 `dirs/...`, `search?paths=`, `color`). Run: `uv run okf-backend [--read-only]
 [--host] [--port 8765] [--static DIR]` (binds 127.0.0.1, no auth). It also

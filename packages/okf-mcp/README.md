@@ -133,6 +133,11 @@ disabled until you configure the server; every other tool works without it.
 The search implementation and the `OKF_EMBEDDING_*` settings belong to `okf-backend`;
 this server just exposes them.
 
+Settings come from real environment variables, then `./.env` in the directory
+the server starts in, then `<OKF_HOME>/.env` (`~/.okf/.env` by default). A stdio
+server that Claude Code spawns runs in *that* project's directory, so put the
+settings in `~/.okf/.env` to configure every server once.
+
 | Variable | Meaning | Default |
 |---|---|---|
 | `OKF_EMBEDDING_URL` | Base URL incl. any `/v1` prefix; `/embeddings` is appended (e.g. Ollama: `http://localhost:11434/v1`) | unset (search errors) |
